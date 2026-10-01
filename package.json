@@ -2,11 +2,14 @@
   "name": "clipbridge",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["server", "desktop"],
+  "workspaces": ["server", "desktop", "mobile"],
   "scripts": {
     "test": "npm --workspace server test",
     "server": "npm --workspace server start",
     "desktop": "npm --workspace desktop start",
-    "package:win": "npm --workspace desktop run package:win"
+    "package:win": "npm --workspace desktop run package:win",
+    "mobile:build": "npm --workspace mobile run build",
+    "android:add": "npm --workspace mobile run android:add",
+    "android:sync": "npm --workspace mobile run android:sync"
   }
 }

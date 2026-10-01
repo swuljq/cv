@@ -1,0 +1,8 @@
+{
+  "name": "clipbridge-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": { "build": "vite build", "android:add": "cap add android", "android:sync": "npm run build && cap sync android", "android:open": "cap open android" },
+  "dependencies": { "@capacitor/android": "7.4.3", "@capacitor/clipboard": "7.0.2", "@capacitor/core": "7.4.3" },
+  "devDependencies": { "@capacitor/cli": "7.4.3", "vite": "6.3.5" }
+}

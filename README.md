@@ -26,7 +26,24 @@ npm run package:win
 
 构建产物位于 `desktop/dist/`。当前构建使用 Electron，后续会根据轻量化目标替换为更轻的运行时。
 
+## Android APK
+
+Android 工程已经生成在 `mobile/android/`，同步前端资源：
+
+```powershell
+npm run android:sync
+```
+
+然后在安装了 Android SDK 的机器上构建：
+
+```powershell
+./mobile/android/gradlew.bat -p mobile/android assembleDebug
+```
+
+APK 会输出到 `mobile/android/app/build/outputs/apk/debug/`。当前开发环境已生成 Android 工程，但没有配置 Android SDK，因此还不能在这里完成 APK 编译。
+
 ## 当前范围
 
 - 已实现：Node WebSocket 中转服务、固定账号、Windows 桌面端、文本和 PNG 图片同步、回环抑制。
-- 下一步：服务端远程部署配置、HTTPS/WSS、Android Capacitor 客户端、Linux 打包、本地历史和安全存储。
+- 已生成：Android Capacitor 客户端工程，支持前台文本剪贴板同步。
+- 下一步：服务端远程部署配置、HTTPS/WSS、Android 后台剪贴板策略、图片同步、Linux 打包、本地历史和安全存储。

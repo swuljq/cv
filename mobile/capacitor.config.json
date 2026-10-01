@@ -1,0 +1,6 @@
+{
+  "appId": "com.clipbridge.mobile",
+  "appName": "ClipBridge",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}

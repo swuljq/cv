@@ -14,3 +14,7 @@ tmp/
 # Node dependencies and build output
 node_modules/
 desktop/dist/
+
+# Android/Capacitor generated output
+mobile/android/.gradle/
+mobile/android/**/build/
