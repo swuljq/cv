@@ -1,0 +1,12 @@
+# IDE metadata
+.idea/
+.vscode/
+
+# Local environment and generated files
+.env
+.env.*
+dist/
+build/
+coverage/
+tmp/
+*.log
