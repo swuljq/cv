@@ -1,0 +1,10 @@
+{
+  "name": "clipbridge-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": { "start": "electron .", "package:win": "electron-builder --win portable" },
+  "dependencies": { "ws": "^8.18.0" },
+  "devDependencies": { "electron": "36.3.2", "electron-builder": "26.15.3" },
+  "build": { "appId": "com.clipbridge.desktop", "productName": "ClipBridge", "files": ["src/**/*", "package.json"], "win": { "target": "portable" } }
+}

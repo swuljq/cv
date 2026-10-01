@@ -10,3 +10,7 @@ build/
 coverage/
 tmp/
 *.log
+
+# Node dependencies and build output
+node_modules/
+desktop/dist/

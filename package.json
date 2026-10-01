@@ -1,0 +1,12 @@
+{
+  "name": "clipbridge",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["server", "desktop"],
+  "scripts": {
+    "test": "npm --workspace server test",
+    "server": "npm --workspace server start",
+    "desktop": "npm --workspace desktop start",
+    "package:win": "npm --workspace desktop run package:win"
+  }
+}
