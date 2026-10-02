@@ -93,7 +93,10 @@ public class ClipboardSyncService extends Service {
         });
     }
 
-    static void sendFromAccessibility(String text) { if (instance != null) instance.sendText(text); }
+    static void sendFromAccessibility(String text) {
+        if (instance != null) instance.sendText(text);
+        else Log.w("ClipBridge", "无法发送手机剪贴板：后台同步服务未运行");
+    }
 
     private void sendClipboard() {
         if (stopping || socket == null || clipboard == null || !clipboard.hasPrimaryClip()) return;
