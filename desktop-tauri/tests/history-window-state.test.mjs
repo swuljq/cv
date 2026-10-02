@@ -47,3 +47,11 @@ test('history items expose their full text on hover', async () => {
 
   assert.match(source, /class="history-item"[^>]*title="\$\{escapeHtml\(item\)\}"/);
 });
+
+test('history list fills the window and scrolls independently', async () => {
+  const styles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+  assert.match(styles, /body\.history-body #app\{height:100vh\}/);
+  assert.match(styles, /\.history-window\{display:flex;flex-direction:column;/);
+  assert.match(styles, /#history-list\{min-height:0;flex:1;overflow-y:auto;/);
+});
