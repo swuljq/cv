@@ -1,10 +1,48 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use arboard::Clipboard;
 use serde_json::json;
-use std::{sync::atomic::{AtomicBool, Ordering}, thread, time::{Duration, Instant}};
+use std::{sync::{atomic::{AtomicBool, Ordering}, Mutex, OnceLock}, thread, time::{Duration, Instant}};
+use tauri::{Emitter, Manager};
 use tungstenite::{connect, stream::MaybeTlsStream, Message};
 
 static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
+static CLIPBOARD_HISTORY: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+
+fn history_store() -> &'static Mutex<Vec<String>> {
+    CLIPBOARD_HISTORY.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn remember_clipboard(value: &str) {
+    if value.is_empty() { return; }
+    if let Ok(mut history) = history_store().lock() {
+        history.retain(|item| item != value);
+        history.insert(0, value.to_string());
+        history.truncate(10);
+    }
+}
+
+#[tauri::command]
+fn get_clipboard_history() -> Vec<String> {
+    history_store().lock().map(|history| history.clone()).unwrap_or_default()
+}
+
+#[tauri::command]
+fn select_clipboard_history(value: String) -> Result<(), String> {
+    let mut clipboard = Clipboard::new().map_err(|error| error.to_string())?;
+    clipboard.set_text(value.clone()).map_err(|error| error.to_string())?;
+    remember_clipboard(&value);
+    Ok(())
+}
+
+fn show_history_shortcut<R: tauri::Runtime>(app: &tauri::AppHandle<R>, _: &tauri_plugin_global_shortcut::Shortcut, event: tauri_plugin_global_shortcut::ShortcutEvent) {
+    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        let _ = app.emit("clipboard-history-open", ());
+    }
+}
 
 fn auth_message(username: &str, password: &str) -> Message {
     Message::Text(json!({
@@ -52,6 +90,7 @@ fn start_sync(url: String, username: String, password: String) -> Result<(), Str
                     if let Ok(text) = cb.get_text() {
                         if !text.is_empty() && text != last {
                             last = text.clone();
+                            remember_clipboard(&text);
                             let event_id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|v| v.as_millis()).unwrap_or_default();
                             if socket.send(Message::Text(json!({"type":"clipboard","eventId":format!("tauri-{event_id}"),"contentType":"text","data":text}).to_string())).is_err() {
                                 continue 'reconnect;
@@ -62,7 +101,7 @@ fn start_sync(url: String, username: String, password: String) -> Result<(), Str
                 match socket.read() {
                     Ok(Message::Text(raw)) => if let Ok(message) = serde_json::from_str::<serde_json::Value>(&raw) {
                         if message["type"] == "clipboard" && message["contentType"] == "text" {
-                            if let Some(value) = message["data"].as_str() { if let Some(cb) = clipboard.as_mut() { let _ = cb.set_text(value); last = value.to_string(); } }
+                                if let Some(value) = message["data"].as_str() { if let Some(cb) = clipboard.as_mut() { let _ = cb.set_text(value); last = value.to_string(); } remember_clipboard(value); }
                         }
                     },
                     Err(tungstenite::Error::Io(ref e)) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {},
@@ -78,7 +117,7 @@ fn start_sync(url: String, username: String, password: String) -> Result<(), Str
 
 #[cfg(test)]
 mod tests {
-    use super::auth_message;
+    use super::{auth_message, get_clipboard_history, remember_clipboard};
     use tungstenite::Message;
 
     #[test]
@@ -92,13 +131,32 @@ mod tests {
         assert_eq!(value["password"], "secret");
         assert_eq!(value["deviceId"], "windows-tauri");
     }
+
+    #[test]
+    fn clipboard_history_keeps_latest_ten_items_without_duplicates() {
+        for index in 0..12 { remember_clipboard(&format!("item-{index}")); }
+        remember_clipboard("item-5");
+        let history = get_clipboard_history();
+        assert_eq!(history.len(), 10);
+        assert_eq!(history[0], "item-5");
+        assert!(!history.contains(&"item-0".to_string()));
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![start_sync])
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .setup(|app| {
+            use tauri_plugin_global_shortcut::GlobalShortcutExt;
+            if let Err(error) = app.global_shortcut().on_shortcut("Super+V", show_history_shortcut) {
+                eprintln!("Win+V 注册失败，改用 Ctrl+Shift+V：{error}");
+                app.global_shortcut().on_shortcut("CommandOrControl+Shift+V", show_history_shortcut)?;
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![start_sync, get_clipboard_history, select_clipboard_history])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
