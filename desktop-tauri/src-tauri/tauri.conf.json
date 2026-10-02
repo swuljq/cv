@@ -14,8 +14,8 @@
     "windows": [
       {
         "title": "desktop-tauri",
-        "width": 800,
-        "height": 600
+        "width": 460,
+        "height": 520
       }
     ],
     "security": {

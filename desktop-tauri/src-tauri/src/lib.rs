@@ -1,11 +1,14 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use arboard::Clipboard;
+use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 use serde_json::json;
-use std::{sync::{atomic::{AtomicBool, Ordering}, Mutex, OnceLock}, thread, time::{Duration, Instant}};
+use std::{sync::{atomic::{AtomicBool, AtomicIsize, Ordering}, Mutex, OnceLock}, thread, time::{Duration, Instant}};
 use tauri::{Emitter, Manager};
 use tungstenite::{connect, stream::MaybeTlsStream, Message};
+use windows::Win32::{Foundation::{POINT, HWND}, UI::WindowsAndMessaging::{GetCursorPos, GetForegroundWindow, SetForegroundWindow}};
 
 static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
+static TARGET_WINDOW: AtomicIsize = AtomicIsize::new(0);
 static CLIPBOARD_HISTORY: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
 
 fn history_store() -> &'static Mutex<Vec<String>> {
@@ -31,12 +34,27 @@ fn select_clipboard_history(value: String) -> Result<(), String> {
     let mut clipboard = Clipboard::new().map_err(|error| error.to_string())?;
     clipboard.set_text(value.clone()).map_err(|error| error.to_string())?;
     remember_clipboard(&value);
+    let target = TARGET_WINDOW.load(Ordering::Acquire);
+    if target != 0 {
+        unsafe {
+            let _ = SetForegroundWindow(HWND(target as *mut _));
+        }
+        thread::sleep(Duration::from_millis(80));
+        let mut enigo = Enigo::new(&Settings::default()).map_err(|error| error.to_string())?;
+        enigo.key(Key::Control, Direction::Press).map_err(|error| error.to_string())?;
+        enigo.key(Key::V, Direction::Click).map_err(|error| error.to_string())?;
+        enigo.key(Key::Control, Direction::Release).map_err(|error| error.to_string())?;
+    }
     Ok(())
 }
 
 fn show_history_shortcut<R: tauri::Runtime>(app: &tauri::AppHandle<R>, _: &tauri_plugin_global_shortcut::Shortcut, event: tauri_plugin_global_shortcut::ShortcutEvent) {
     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+        unsafe { TARGET_WINDOW.store(GetForegroundWindow().0 as isize, Ordering::Release); }
         if let Some(window) = app.get_webview_window("main") {
+            let mut point = POINT::default();
+            unsafe { let _ = GetCursorPos(&mut point); }
+            let _ = window.set_position(tauri::PhysicalPosition::new(point.x - 230, point.y - 180));
             let _ = window.show();
             let _ = window.set_focus();
         }
