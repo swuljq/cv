@@ -3,7 +3,7 @@ use arboard::Clipboard;
 use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 use serde_json::json;
 use std::{sync::{atomic::{AtomicBool, AtomicIsize, Ordering}, Mutex, OnceLock}, thread, time::{Duration, Instant}};
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tungstenite::{connect, stream::MaybeTlsStream, Message};
 use windows::Win32::{Foundation::{POINT, HWND}, UI::WindowsAndMessaging::{GetCursorPos, GetForegroundWindow, SetForegroundWindow}};
 
@@ -174,12 +174,19 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            WebviewWindowBuilder::new(app, "history", WebviewUrl::App("index.html?history".into()))
+            let history_window = WebviewWindowBuilder::new(app, "history", WebviewUrl::App("index.html?history".into()))
                 .title("ClipBridge 最近复制")
                 .inner_size(430.0, 360.0)
                 .resizable(false)
                 .visible(false)
                 .build()?;
+            let history_window_handle = history_window.clone();
+            history_window.on_window_event(move |event| {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = history_window_handle.hide();
+                }
+            });
             app.global_shortcut().on_shortcut(HISTORY_SHORTCUT, show_history_shortcut)?;
             Ok(())
         })
