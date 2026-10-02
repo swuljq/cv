@@ -1,5 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
+    <string name="accessibility_service_description">允许 ClipBridge 在后台同步剪贴板</string>
     <string name="app_name">ClipBridge</string>
     <string name="title_activity_main">ClipBridge</string>
     <string name="package_name">com.clipbridge.mobile</string>

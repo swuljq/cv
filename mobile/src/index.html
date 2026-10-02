@@ -8,6 +8,7 @@
 <input id="user" value="clipbridge" placeholder="账号">
 <input id="password" value="clipbridge-dev" type="password" placeholder="密码">
 <button id="connect">连接并开始同步</button>
+<button id="accessibility" style="background:#475569">开启后台剪贴板权限</button>
 <div id="status">未连接</div>
 <pre id="log">等待操作…</pre>
 <script type="module">
@@ -41,7 +42,7 @@ function scheduleReconnect(){ if (!shouldStayConnected || reconnectTimer) return
 async function startBackgroundService(){ try { await Clipboard.startSync({url:$('server').value.trim(),user:$('user').value,password:$('password').value}); log('已启动 Android 前台后台同步服务'); } catch(error) { log(`后台服务启动失败：${error?.message || error}`); } }
 async function stopBackgroundService(){ try { await Clipboard.stopSync(); log('已停止 Android 后台同步服务'); } catch(error) { log(`后台服务停止失败：${error?.message || error}`); } }
 function resumeConnection(reason){ if (!shouldStayConnected) return; backgroundMode = false; log(`应用恢复到前台（${reason}）`); stopBackgroundService(); if (!socket || socket.readyState === WebSocket.CLOSED) connect(); }
-window.addEventListener('DOMContentLoaded', () => { $('connect').addEventListener('click', () => { log('按钮点击事件已触发'); connect(); }); document.addEventListener('visibilitychange', () => { log(`页面可见性：${document.visibilityState}`); if (document.visibilityState === 'hidden' && shouldStayConnected) { backgroundMode = true; socket?.close(1000, 'background service'); startBackgroundService(); } if (document.visibilityState === 'visible') resumeConnection('visibilitychange'); }); window.addEventListener('pageshow', () => resumeConnection('pageshow')); window.addEventListener('focus', () => resumeConnection('focus')); log('按钮事件已绑定'); }); setInterval(poll, 1200);
+window.addEventListener('DOMContentLoaded', () => { $('connect').addEventListener('click', () => { log('按钮点击事件已触发'); connect(); }); $('accessibility').addEventListener('click', async () => { try { await Clipboard.openAccessibilitySettings(); log('已打开系统无障碍设置，请开启 ClipBridge'); } catch(error) { log(`打开无障碍设置失败：${error?.message || error}`); } }); document.addEventListener('visibilitychange', () => { log(`页面可见性：${document.visibilityState}`); if (document.visibilityState === 'hidden' && shouldStayConnected) { backgroundMode = true; socket?.close(1000, 'background service'); startBackgroundService(); } if (document.visibilityState === 'visible') resumeConnection('visibilitychange'); }); window.addEventListener('pageshow', () => resumeConnection('pageshow')); window.addEventListener('focus', () => resumeConnection('focus')); log('按钮事件已绑定'); }); setInterval(poll, 1200);
 </script>
 
 

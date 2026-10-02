@@ -28,6 +28,7 @@ import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
 public class ClipboardSyncService extends Service {
+    private static volatile ClipboardSyncService instance;
     private static final String CHANNEL_ID = "clipbridge_sync";
     private static final int NOTIFICATION_ID = 8787;
     private WebSocket socket;
@@ -44,6 +45,7 @@ public class ClipboardSyncService extends Service {
 
     @Override public void onCreate() {
         super.onCreate();
+        instance = this;
         createChannel();
         clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
         if (clipboard != null) clipboard.addPrimaryClipChangedListener(clipListener);
@@ -91,10 +93,16 @@ public class ClipboardSyncService extends Service {
         });
     }
 
+    static void sendFromAccessibility(String text) { if (instance != null) instance.sendText(text); }
+
     private void sendClipboard() {
         if (stopping || socket == null || clipboard == null || !clipboard.hasPrimaryClip()) return;
         CharSequence value = clipboard.getPrimaryClip().getItemAt(0).coerceToText(this);
         String text = value == null ? "" : value.toString();
+        sendText(text);
+    }
+
+    private void sendText(String text) {
         if (text.isEmpty() || text.equals(lastText)) return;
         try {
             boolean sent = socket.send(new JSONObject().put("type", "clipboard").put("eventId", UUID.randomUUID().toString()).put("contentType", "text").put("data", text).toString());
@@ -105,6 +113,6 @@ public class ClipboardSyncService extends Service {
 
     private Notification notification(String text) { return new NotificationCompat.Builder(this, CHANNEL_ID).setContentTitle("ClipBridge").setContentText(text).setSmallIcon(android.R.drawable.stat_notify_sync).setOngoing(true).build(); }
     private void createChannel() { NotificationManager manager = getSystemService(NotificationManager.class); if (manager != null) manager.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "剪贴板同步", NotificationManager.IMPORTANCE_LOW)); }
-    @Override public void onDestroy() { stopping = true; handler.removeCallbacks(clipboardPoller); if (clipboard != null) clipboard.removePrimaryClipChangedListener(clipListener); if (socket != null) socket.close(1000, "stop"); super.onDestroy(); }
+    @Override public void onDestroy() { stopping = true; instance = null; handler.removeCallbacks(clipboardPoller); if (clipboard != null) clipboard.removePrimaryClipChangedListener(clipListener); if (socket != null) socket.close(1000, "stop"); super.onDestroy(); }
     @Nullable @Override public IBinder onBind(Intent intent) { return null; }
 }
