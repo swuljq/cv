@@ -10,6 +10,7 @@ use windows::Win32::{Foundation::{POINT, HWND}, UI::WindowsAndMessaging::{GetCur
 static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
 static TARGET_WINDOW: AtomicIsize = AtomicIsize::new(0);
 static CLIPBOARD_HISTORY: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+const HISTORY_SHORTCUT: &str = "CommandOrControl+Alt+Z";
 
 fn history_store() -> &'static Mutex<Vec<String>> {
     CLIPBOARD_HISTORY.get_or_init(|| Mutex::new(Vec::new()))
@@ -135,7 +136,7 @@ fn start_sync(url: String, username: String, password: String) -> Result<(), Str
 
 #[cfg(test)]
 mod tests {
-    use super::{auth_message, get_clipboard_history, remember_clipboard};
+    use super::{auth_message, get_clipboard_history, remember_clipboard, HISTORY_SHORTCUT};
     use tungstenite::Message;
 
     #[test]
@@ -159,6 +160,11 @@ mod tests {
         assert_eq!(history[0], "item-5");
         assert!(!history.contains(&"item-0".to_string()));
     }
+
+    #[test]
+    fn history_shortcut_uses_control_alt_z() {
+        assert_eq!(HISTORY_SHORTCUT, "CommandOrControl+Alt+Z");
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -174,7 +180,7 @@ pub fn run() {
                 .resizable(false)
                 .visible(false)
                 .build()?;
-            app.global_shortcut().on_shortcut("CommandOrControl+Shift+Z", show_history_shortcut)?;
+            app.global_shortcut().on_shortcut(HISTORY_SHORTCUT, show_history_shortcut)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![start_sync, get_clipboard_history, select_clipboard_history])
