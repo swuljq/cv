@@ -113,7 +113,10 @@ pub fn first_file_image() -> Option<Result<NormalizedImage, String>> {
 
 pub fn read_clipboard_image(clipboard: &mut arboard::Clipboard) -> Option<Result<NormalizedImage, String>> {
     if let Some(image) = first_file_image() { return Some(image); }
-    clipboard.get_image().ok().map(|image| normalize_rgba(image.width, image.height, &image.bytes))
+    match clipboard.get_image() {
+        Ok(image) => Some(normalize_rgba(image.width, image.height, &image.bytes)),
+        Err(_) => clipboard_win::get_clipboard(clipboard_win::formats::Bitmap).ok().map(|bytes: Vec<u8>| normalize_encoded(&bytes)),
+    }
 }
 
 #[cfg(test)]
