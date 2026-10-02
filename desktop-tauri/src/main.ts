@@ -36,7 +36,7 @@ if (isHistoryWindow) {
   document.querySelector<HTMLButtonElement>('#close-history')!.onclick = () => { void currentWindow.hide(); };
   void listen('clipboard-history-open', renderHistory);
 } else {
-  app.innerHTML = `<main><h2>ClipBridge</h2><input id="server" value="ws://104.233.216.159:8787" placeholder="服务器地址"><input id="user" value="clipbridge" placeholder="账号"><input id="password" value="JocK36vOBqd4" type="password" placeholder="密码"><button id="connect">连接并开始同步</button><p id="status">未连接</p><label class="opacity-control">历史窗口透明度 <input id="opacity" type="range" min="5" max="100" value="92"><span id="opacity-value">92%</span></label><small>连接后可最小化到后台，按 Win+V 查看鼠标附近的历史窗口；若被系统占用则按 Ctrl+Shift+V。</small></main>`;
+  app.innerHTML = `<main><h2>ClipBridge</h2><input id="server" value="ws://104.233.216.159:8787" placeholder="服务器地址"><input id="user" value="clipbridge" placeholder="账号"><input id="password" value="JocK36vOBqd4" type="password" placeholder="密码"><button id="connect">连接并开始同步</button><p id="status">未连接</p><label class="opacity-control">历史窗口透明度 <input id="opacity" type="range" min="5" max="100" value="92"><span id="opacity-value">92%</span></label><small>连接后可最小化到后台，按 Ctrl+Shift+Z 查看鼠标附近的历史窗口。</small></main>`;
   const $ = (id: string) => document.querySelector<HTMLInputElement | HTMLButtonElement | HTMLParagraphElement>(`#${id}`)!;
   ($('connect') as HTMLButtonElement).onclick = async () => {
     $('status').textContent = '连接中…';

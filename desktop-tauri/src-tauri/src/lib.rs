@@ -174,10 +174,7 @@ pub fn run() {
                 .resizable(false)
                 .visible(false)
                 .build()?;
-            if let Err(error) = app.global_shortcut().on_shortcut("Super+V", show_history_shortcut) {
-                eprintln!("Win+V 注册失败，改用 Ctrl+Shift+V：{error}");
-                app.global_shortcut().on_shortcut("CommandOrControl+Shift+V", show_history_shortcut)?;
-            }
+            app.global_shortcut().on_shortcut("CommandOrControl+Shift+Z", show_history_shortcut)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![start_sync, get_clipboard_history, select_clipboard_history])
