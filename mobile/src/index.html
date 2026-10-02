@@ -13,17 +13,20 @@
 import { Clipboard } from '@capacitor/clipboard';
 const $ = id => document.getElementById(id);
 let socket; let last = '';
+const id = () => (globalThis.crypto?.randomUUID?.() || ("android-" + Date.now() + "-" + Math.random().toString(16).slice(2)));
 function status(v){ $('status').textContent = v; }
 async function poll(){
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   const value = await Clipboard.read();
-  if (value.type === 'text' && value.value && value.value !== last) { last = value.value; socket.send(JSON.stringify({type:'clipboard',eventId:crypto.randomUUID(),contentType:'text',data:value.value})); }
+  if (value.type === 'text' && value.value && value.value !== last) { last = value.value; socket.send(JSON.stringify({type:'clipboard',eventId:id(),contentType:'text',data:value.value})); }
 }
 function connect(){
   socket = new WebSocket($('server').value);
-  socket.onopen = () => { socket.send(JSON.stringify({type:'auth',username:$('user').value,password:$('password').value,deviceId:crypto.randomUUID(),deviceName:'Android'})); status('连接中…'); };
+  socket.onopen = () => { socket.send(JSON.stringify({type:'auth',username:$('user').value,password:$('password').value,deviceId:id(),deviceName:'Android'})); status('连接中…'); };
   socket.onmessage = async event => { const m=JSON.parse(event.data); if(m.type==='auth_ok') status('已连接'); if(m.type==='clipboard' && m.contentType==='text'){ last=m.data; await Clipboard.write({string:m.data}); status('已同步文本'); } };
   socket.onclose = () => status('连接断开'); socket.onerror = () => status('连接错误');
 }
 $('#connect').onclick = connect; setInterval(poll, 1200);
 </script>
+
+
