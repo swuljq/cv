@@ -17,6 +17,17 @@ npm run server
 
 在任意客户端复制文本或图片，另一个客户端会收到并写入系统剪贴板。
 
+手机连接电脑上的服务时，在 PowerShell 中使用局域网监听：
+
+```powershell
+$env:HOST="0.0.0.0"
+$env:PORT="8787"
+npm run server
+ipconfig
+```
+
+把手机端服务器地址填写为 `ws://电脑的IPv4地址:8787`，例如 `ws://192.168.1.20:8787`。电脑和手机必须连接同一个局域网；如果 Windows 防火墙弹出提示，需要允许 Node.js 通过专用网络通信。
+
 ## 构建 Windows 可执行文件
 
 ```powershell

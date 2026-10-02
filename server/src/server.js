@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 export const DEFAULT_USER = process.env.CLIPBRIDGE_USER || 'clipbridge';
 export const DEFAULT_PASSWORD = process.env.CLIPBRIDGE_PASSWORD || 'clipbridge-dev';
 
-export function createServer({ port = Number(process.env.PORT || 8787), user = DEFAULT_USER, password = DEFAULT_PASSWORD } = {}) {
+export function createServer({ port = Number(process.env.PORT || 8787), host = process.env.HOST || '127.0.0.1', user = DEFAULT_USER, password = DEFAULT_PASSWORD } = {}) {
   const clients = new Map();
   const httpServer = http.createServer((req, res) => {
     if (req.url === '/health') {
@@ -41,10 +41,10 @@ export function createServer({ port = Number(process.env.PORT || 8787), user = D
     });
     socket.on('close', () => { if (client && clients.get(client.deviceId)?.socket === socket) clients.delete(client.deviceId); });
   });
-  return { httpServer, wss, clients, listen: () => new Promise(resolve => httpServer.listen(port, '127.0.0.1', resolve)), close: () => new Promise(resolve => httpServer.close(resolve)) };
+  return { httpServer, wss, clients, listen: () => new Promise(resolve => httpServer.listen(port, host, resolve)), close: () => new Promise(resolve => httpServer.close(resolve)) };
 }
 
 if (process.argv[1] && new URL(import.meta.url).pathname === new URL(`file://${process.argv[1].replaceAll('\\', '/')}`).pathname) {
   const server = createServer({ port: Number(process.env.PORT || 8787) });
-  server.listen().then(() => console.log(`ClipBridge server listening on ws://127.0.0.1:${process.env.PORT || 8787}`));
+  server.listen().then(() => console.log(`ClipBridge server listening on ws://${process.env.HOST || '127.0.0.1'}:${process.env.PORT || 8787}`));
 }
