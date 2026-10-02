@@ -18,3 +18,4 @@ desktop/dist/
 # Android/Capacitor generated output
 mobile/android/.gradle/
 mobile/android/**/build/
+mobile/android/local.properties
