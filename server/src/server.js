@@ -16,7 +16,20 @@ export function createServer({ port = Number(process.env.PORT || 8787), host = p
     res.end();
   });
   const wss = new WebSocketServer({ server: httpServer });
+  const heartbeat = setInterval(() => {
+    for (const socket of wss.clients) {
+      if (socket.isAlive === false) {
+        socket.terminate();
+        continue;
+      }
+      socket.isAlive = false;
+      socket.ping();
+    }
+  }, 30000);
+  heartbeat.unref?.();
   wss.on('connection', socket => {
+    socket.isAlive = true;
+    socket.on('pong', () => { socket.isAlive = true; });
     let client;
     socket.on('message', raw => {
       let message;
@@ -41,7 +54,7 @@ export function createServer({ port = Number(process.env.PORT || 8787), host = p
     });
     socket.on('close', () => { if (client && clients.get(client.deviceId)?.socket === socket) clients.delete(client.deviceId); });
   });
-  return { httpServer, wss, clients, listen: () => new Promise(resolve => httpServer.listen(port, host, resolve)), close: () => new Promise(resolve => httpServer.close(resolve)) };
+  return { httpServer, wss, clients, listen: () => new Promise(resolve => httpServer.listen(port, host, resolve)), close: () => new Promise(resolve => { clearInterval(heartbeat); wss.close(() => httpServer.close(resolve)); }) };
 }
 
 if (process.argv[1] && new URL(import.meta.url).pathname === new URL(`file://${process.argv[1].replaceAll('\\', '/')}`).pathname) {
