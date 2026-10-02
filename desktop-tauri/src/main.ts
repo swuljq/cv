@@ -40,7 +40,7 @@ if (isHistoryWindow) {
     historyList.querySelectorAll<HTMLButtonElement>('.history-item').forEach(button => {
       button.onclick = async () => {
         await invoke('select_clipboard_history', { value: ordered[Number(button.dataset.index)] });
-        if (shouldAutoHideHistory(windowPinned)) await currentWindow.hide();
+        if (shouldAutoHideHistory(windowPinned)) await invoke('hide_history');
       };
     });
     historyList.querySelectorAll<HTMLButtonElement>('.pin-item').forEach(button => {
@@ -59,7 +59,7 @@ if (isHistoryWindow) {
     await invoke('hide_history');
   };
   void currentWindow.onFocusChanged(({ payload: focused }) => {
-    if (!focused && shouldAutoHideHistory(windowPinned)) void currentWindow.hide();
+    if (!focused && shouldAutoHideHistory(windowPinned)) void invoke('hide_history');
   });
   void listen('clipboard-history-open', renderHistory);
   void listen<number>('history-opacity-changed', event => {
