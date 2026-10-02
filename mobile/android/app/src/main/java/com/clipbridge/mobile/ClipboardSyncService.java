@@ -8,6 +8,9 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
 import android.os.IBinder;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 import android.text.TextUtils;
 
 import androidx.annotation.Nullable;
@@ -31,12 +34,20 @@ public class ClipboardSyncService extends Service {
     private ClipboardManager clipboard;
     private String lastText = "";
     private boolean stopping;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable clipboardPoller = new Runnable() {
+        @Override public void run() {
+            sendClipboard();
+            if (!stopping) handler.postDelayed(this, 1000);
+        }
+    };
 
     @Override public void onCreate() {
         super.onCreate();
         createChannel();
         clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
         if (clipboard != null) clipboard.addPrimaryClipChangedListener(clipListener);
+        handler.post(clipboardPoller);
     }
 
     private final ClipboardManager.OnPrimaryClipChangedListener clipListener = this::sendClipboard;
@@ -51,6 +62,7 @@ public class ClipboardSyncService extends Service {
         String url = intent.getStringExtra("url");
         if (TextUtils.isEmpty(url)) return;
         if (socket != null) socket.close(1000, "reconnect");
+        Log.i("ClipBridge", "后台服务连接：" + url);
         Request request = new Request.Builder().url(url).build();
         OkHttpClient client = new OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).build();
         socket = client.newWebSocket(request, new WebSocketListener() {
@@ -62,6 +74,7 @@ public class ClipboardSyncService extends Service {
                         .put("deviceId", "android-service-" + UUID.randomUUID())
                         .put("deviceName", "Android 后台服务");
                     ws.send(auth.toString());
+                    Log.i("ClipBridge", "后台服务 WebSocket 已连接并发送登录信息");
                 } catch (Exception ignored) { }
             }
             @Override public void onMessage(WebSocket ws, String text) {
@@ -71,6 +84,7 @@ public class ClipboardSyncService extends Service {
                         String value = message.optString("data", "");
                         lastText = value;
                         if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("ClipBridge", value));
+                        Log.i("ClipBridge", "已接收并写入手机剪贴板");
                     }
                 } catch (Exception ignored) { }
             }
@@ -82,12 +96,15 @@ public class ClipboardSyncService extends Service {
         CharSequence value = clipboard.getPrimaryClip().getItemAt(0).coerceToText(this);
         String text = value == null ? "" : value.toString();
         if (text.isEmpty() || text.equals(lastText)) return;
-        lastText = text;
-        try { socket.send(new JSONObject().put("type", "clipboard").put("eventId", UUID.randomUUID().toString()).put("contentType", "text").put("data", text).toString()); } catch (Exception ignored) { }
+        try {
+            boolean sent = socket.send(new JSONObject().put("type", "clipboard").put("eventId", UUID.randomUUID().toString()).put("contentType", "text").put("data", text).toString());
+            if (sent) lastText = text;
+            Log.i("ClipBridge", sent ? "已发送手机剪贴板到服务器" : "手机剪贴板发送失败：WebSocket 未打开");
+        } catch (Exception error) { Log.e("ClipBridge", "手机剪贴板发送异常", error); }
     }
 
     private Notification notification(String text) { return new NotificationCompat.Builder(this, CHANNEL_ID).setContentTitle("ClipBridge").setContentText(text).setSmallIcon(android.R.drawable.stat_notify_sync).setOngoing(true).build(); }
     private void createChannel() { NotificationManager manager = getSystemService(NotificationManager.class); if (manager != null) manager.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "剪贴板同步", NotificationManager.IMPORTANCE_LOW)); }
-    @Override public void onDestroy() { stopping = true; if (clipboard != null) clipboard.removePrimaryClipChangedListener(clipListener); if (socket != null) socket.close(1000, "stop"); super.onDestroy(); }
+    @Override public void onDestroy() { stopping = true; handler.removeCallbacks(clipboardPoller); if (clipboard != null) clipboard.removePrimaryClipChangedListener(clipListener); if (socket != null) socket.close(1000, "stop"); super.onDestroy(); }
     @Nullable @Override public IBinder onBind(Intent intent) { return null; }
 }
