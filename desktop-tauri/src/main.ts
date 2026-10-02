@@ -10,7 +10,7 @@ const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, character => ({ 
 
 if (isHistoryWindow) {
   document.body.classList.add('history-body');
-  app.innerHTML = `<section class="history-window"><div class="history-head" data-tauri-drag-region><strong>最近复制</strong><button id="close-history" aria-label="关闭">×</button></div><div id="history-list"></div></section>`;
+  app.innerHTML = `<section class="history-window"><div class="history-head"><strong>最近复制</strong><button id="close-history" aria-label="关闭">×</button></div><div id="history-list"></div></section>`;
   const historyList = document.querySelector<HTMLElement>('#history-list')!;
   const renderHistory = async () => {
     const items = await invoke<string[]>('get_clipboard_history');
@@ -34,7 +34,10 @@ if (isHistoryWindow) {
     const opacity = Number(localStorage.getItem('clipbridge-opacity') || '92') / 100;
     document.querySelector<HTMLElement>('.history-window')!.style.setProperty('--history-opacity', String(opacity));
   };
-  document.querySelector<HTMLButtonElement>('#close-history')!.onclick = () => { void currentWindow.hide(); };
+  document.querySelector<HTMLButtonElement>('#close-history')!.onclick = async event => {
+    event.stopPropagation();
+    await currentWindow.hide();
+  };
   void listen('clipboard-history-open', renderHistory);
   void listen<number>('history-opacity-changed', event => {
     document.querySelector<HTMLElement>('.history-window')!.style.setProperty('--history-opacity', String(event.payload));
