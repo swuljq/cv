@@ -16,6 +16,7 @@ static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
 static TARGET_WINDOW: AtomicIsize = AtomicIsize::new(0);
 static HISTORY_STATE: OnceLock<Mutex<HistoryState>> = OnceLock::new();
 static HISTORY_IO: Mutex<()> = Mutex::new(());
+static CLIPBOARD_IO: Mutex<()> = Mutex::new(());
 const HISTORY_SHORTCUT: &str = "CommandOrControl+Alt+Z";
 const HISTORY_WINDOW_WIDTH: i32 = 380;
 const HISTORY_WINDOW_HEIGHT: i32 = 320;
@@ -102,10 +103,30 @@ enum ClipboardFingerprint {
     Image(String),
 }
 
+enum ClipboardContent {
+    Image(NormalizedImage),
+    Text(String),
+}
+
 fn should_process_clipboard(last: &mut Option<ClipboardFingerprint>, current: ClipboardFingerprint) -> bool {
     if last.as_ref() == Some(&current) { return false; }
     *last = Some(current);
     true
+}
+
+fn set_image_with_retry(clipboard: &mut Clipboard, image: &NormalizedImage) -> Result<(), String> {
+    let data = image_sync::clipboard_data(image)?;
+    let mut last_error = String::new();
+    for attempt in 0..3 {
+        match clipboard.set_image(data.clone()) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                last_error = error.to_string();
+                if attempt < 2 { thread::sleep(Duration::from_millis(60)); }
+            }
+        }
+    }
+    Err(last_error)
 }
 
 fn bounded_history_position(cursor_x: i32, cursor_y: i32, area_x: i32, area_y: i32, area_width: u32, area_height: u32) -> (i32, i32) {
@@ -568,17 +589,19 @@ fn select_clipboard_history(app: tauri::AppHandle, id: String) -> Result<(), Str
         (entry, PathBuf::from(&state.settings.history_directory))
     };
     let is_image = entry.kind == HistoryKind::Image;
-    let mut clipboard = Clipboard::new().map_err(|error| error.to_string())?;
-    match entry.kind {
-        HistoryKind::Text => clipboard.set_text(entry.text.ok_or_else(|| "文字历史内容缺失".to_string())?).map_err(|error| error.to_string())?,
-        HistoryKind::Image => {
-            let name = entry.file_name.as_deref().ok_or_else(|| "图片历史文件名缺失".to_string())?;
-            let bytes = fs::read(image_directory(&directory).join(name)).map_err(|error| error.to_string())?;
-            let image = image_sync::normalize_encoded(&bytes)?;
-            clipboard.set_image(image_sync::clipboard_data(&image)?).map_err(|error| error.to_string())?;
+    {
+        let _clipboard_io = CLIPBOARD_IO.lock().map_err(|_| "无法访问系统剪贴板".to_string())?;
+        let mut clipboard = Clipboard::new().map_err(|error| error.to_string())?;
+        match entry.kind {
+            HistoryKind::Text => clipboard.set_text(entry.text.ok_or_else(|| "文字历史内容缺失".to_string())?).map_err(|error| error.to_string())?,
+            HistoryKind::Image => {
+                let name = entry.file_name.as_deref().ok_or_else(|| "图片历史文件名缺失".to_string())?;
+                let bytes = fs::read(image_directory(&directory).join(name)).map_err(|error| error.to_string())?;
+                let image = image_sync::normalize_encoded(&bytes)?;
+                set_image_with_retry(&mut clipboard, &image)?;
+            }
         }
     }
-    drop(clipboard);
     let changed = {
         let (mut entries, history_directory) = {
             let state = history_state()?.lock().map_err(|_| "无法访问历史记录".to_string())?;
@@ -683,9 +706,22 @@ fn start_sync(app: tauri::AppHandle, url: String, username: String, password: St
                     last_ping = Instant::now();
                 }
                 if clipboard.is_some() {
-                    let cb = clipboard.as_mut().expect("clipboard checked above");
-                    match image_sync::read_clipboard_image(cb) {
-                        Some(Ok(image)) => {
+                    let clipboard_content: Result<ClipboardContent, String> = {
+                        let _clipboard_io = CLIPBOARD_IO.lock().map_err(|_| "无法访问系统剪贴板".to_string());
+                        match _clipboard_io {
+                            Ok(_guard) => {
+                                let cb = clipboard.as_mut().expect("clipboard checked above");
+                                match image_sync::read_clipboard_image(cb) {
+                                    Some(Ok(image)) => Ok(ClipboardContent::Image(image)),
+                                    Some(Err(error)) => Err(error),
+                                    None => cb.get_text().map(ClipboardContent::Text).map_err(|error| error.to_string()),
+                                }
+                            }
+                            Err(error) => Err(error),
+                        }
+                    };
+                    match clipboard_content {
+                        Ok(ClipboardContent::Image(image)) => {
                             let fingerprint = ClipboardFingerprint::Image(image.sha256.clone());
                             if should_process_clipboard(&mut last_fingerprint, fingerprint) {
                                 match remember_image(&image) {
@@ -700,8 +736,7 @@ fn start_sync(app: tauri::AppHandle, url: String, username: String, password: St
                                 }
                             }
                         }
-                        Some(Err(error)) => { let _ = app.emit("clipboard-sync-warning", error); }
-                        None => if let Ok(text) = cb.get_text() {
+                        Ok(ClipboardContent::Text(text)) => {
                             if !text.is_empty() {
                                 let fingerprint = ClipboardFingerprint::Text(text.clone());
                                 if should_process_clipboard(&mut last_fingerprint, fingerprint) {
@@ -717,6 +752,7 @@ fn start_sync(app: tauri::AppHandle, url: String, username: String, password: St
                                 }
                             }
                         }
+                        Err(error) => { let _ = app.emit("clipboard-sync-warning", error); }
                     }
                 }
                 match socket.read() {
@@ -725,8 +761,9 @@ fn start_sync(app: tauri::AppHandle, url: String, username: String, password: St
                             if message["contentType"] == "text" {
                                 if let Some(value) = message["data"].as_str() {
                                     last_fingerprint = Some(ClipboardFingerprint::Text(value.to_string()));
-                                    let clipboard_result = clipboard.as_mut().ok_or_else(|| "无法访问系统剪贴板".to_string())
-                                        .and_then(|cb| cb.set_text(value).map_err(|error| error.to_string()));
+                                    let clipboard_result = CLIPBOARD_IO.lock().map_err(|_| "无法访问系统剪贴板".to_string())
+                                        .and_then(|_guard| clipboard.as_mut().ok_or_else(|| "无法访问系统剪贴板".to_string())
+                                            .and_then(|cb| cb.set_text(value).map_err(|error| error.to_string())));
                                     match clipboard_result {
                                         Ok(()) => {
                                     match remember_text(value) {
@@ -743,8 +780,9 @@ fn start_sync(app: tauri::AppHandle, url: String, username: String, password: St
                                     match image_sync::decode_wire(value) {
                                         Ok(image) => {
                                             last_fingerprint = Some(ClipboardFingerprint::Image(image.sha256.clone()));
-                                            let clipboard_result = clipboard.as_mut().ok_or_else(|| "无法访问系统剪贴板".to_string())
-                                                .and_then(|cb| image_sync::clipboard_data(&image).and_then(|data| cb.set_image(data).map_err(|error| error.to_string())));
+                                            let clipboard_result = CLIPBOARD_IO.lock().map_err(|_| "无法访问系统剪贴板".to_string())
+                                                .and_then(|_guard| clipboard.as_mut().ok_or_else(|| "无法访问系统剪贴板".to_string()))
+                                                .and_then(|cb| set_image_with_retry(cb, &image));
                                             match clipboard_result {
                                                 Ok(()) => {
                                                     match remember_image(&image) {
