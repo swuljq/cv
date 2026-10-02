@@ -10,6 +10,16 @@ interface HistorySettings {
   historyDirectory: string;
 }
 
+interface HistoryItem {
+  id: string;
+  kind: 'text' | 'image';
+  text?: string;
+  width?: number;
+  height?: number;
+  createdAt: string;
+  available: boolean;
+}
+
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const currentWindow = getCurrentWindow();
 const isHistoryWindow = currentWindow.label === 'history';
@@ -45,24 +55,67 @@ if (isHistoryWindow) {
   renderWindowPin();
   const historyList = document.querySelector<HTMLElement>('#history-list')!;
   const renderHistory = async () => {
-    const items = await invoke<string[]>('get_clipboard_history');
+    const items = await invoke<HistoryItem[]>('get_clipboard_history');
     const pinned = new Set(JSON.parse(localStorage.getItem('clipbridge-pinned') || '[]') as string[]);
-    const ordered = [...items].sort((a, b) => Number(pinned.has(b)) - Number(pinned.has(a)));
-    historyList.innerHTML = ordered.length ? ordered.map((item, index) => `<div class="history-row"><button class="history-item" data-index="${index}" title="${escapeHtml(item)}">${escapeHtml(item)}</button><button class="pin-item" data-value="${encodeURIComponent(item)}" title="置顶">${pinned.has(item) ? '★' : '☆'}</button></div>`).join('') : '<p class="empty">还没有复制记录</p>';
+    const isPinned = (item: HistoryItem) => pinned.has(item.id) || (item.kind === 'text' && Boolean(item.text && pinned.has(item.text)));
+    const ordered = [...items].sort((a, b) => Number(isPinned(b)) - Number(isPinned(a)));
+    historyList.innerHTML = ordered.length ? ordered.map(item => {
+      const id = escapeHtml(item.id);
+      const content = item.kind === 'text'
+        ? escapeHtml(item.text || '')
+        : item.available
+          ? `<img class="history-thumbnail" data-thumbnail-id="${id}" alt="图片缩略图"><span class="image-label">图片 ${item.width || '?'} × ${item.height || '?'}</span>`
+          : '<span class="image-unavailable">图片文件不可用</span>';
+      const title = item.kind === 'text' ? escapeHtml(item.text || '') : item.available ? `图片 ${item.width || '?'} × ${item.height || '?'}` : '图片文件不可用';
+      return `<div class="history-row"><button class="history-item ${item.kind === 'image' ? 'image-item' : ''}" data-id="${id}" title="${title}">${content}</button><button class="pin-item" data-id="${id}" title="置顶">${isPinned(item) ? '★' : '☆'}</button></div>`;
+    }).join('') : '<p class="empty">还没有复制记录</p>';
     historyList.querySelectorAll<HTMLButtonElement>('.history-item').forEach(button => {
       button.onclick = async () => {
-        await invoke('select_clipboard_history', { value: ordered[Number(button.dataset.index)] });
-        if (shouldAutoHideHistory(windowPinned)) await invoke('hide_history');
+        try {
+          await invoke('select_clipboard_history', { id: button.dataset.id });
+          if (shouldAutoHideHistory(windowPinned)) await invoke('hide_history');
+        } catch (error) {
+          button.title = `无法使用此记录：${error}`;
+        }
       };
     });
     historyList.querySelectorAll<HTMLButtonElement>('.pin-item').forEach(button => {
       button.onclick = () => {
-        const item = decodeURIComponent(button.dataset.value || '');
-        if (pinned.has(item)) pinned.delete(item); else pinned.add(item);
+        const item = ordered.find(item => item.id === button.dataset.id);
+        if (!item) return;
+        if (isPinned(item)) {
+          pinned.delete(item.id);
+          if (item.text) pinned.delete(item.text);
+        } else {
+          pinned.add(item.id);
+        }
         localStorage.setItem('clipbridge-pinned', JSON.stringify([...pinned]));
         void renderHistory();
       };
     });
+    const loadThumbnail = async (image: HTMLImageElement) => {
+      const id = image.dataset.thumbnailId;
+      if (!id || image.dataset.loaded) return;
+      image.dataset.loaded = 'true';
+      try {
+        image.src = `data:image/png;base64,${await invoke<string>('get_history_thumbnail', { id })}`;
+      } catch {
+        image.alt = '图片不可用';
+        image.classList.add('unavailable');
+      }
+    };
+    const thumbnails = historyList.querySelectorAll<HTMLImageElement>('.history-thumbnail');
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver(entries => entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          void loadThumbnail(entry.target as HTMLImageElement);
+          observer.unobserve(entry.target);
+        }
+      }), { root: historyList, rootMargin: '80px' });
+      thumbnails.forEach(image => observer.observe(image));
+    } else {
+      thumbnails.forEach(image => void loadThumbnail(image));
+    }
     const opacity = Number(localStorage.getItem('clipbridge-opacity') || '92') / 100;
     document.querySelector<HTMLElement>('.history-window')!.style.setProperty('--history-opacity', String(opacity));
   };
@@ -119,6 +172,9 @@ if (isHistoryWindow) {
     }
   };
   void loadHistorySettings();
+  void listen<string>('clipboard-sync-warning', event => {
+    $<HTMLParagraphElement>('status').textContent = `同步提示：${event.payload}`;
+  });
   const opacityInput = document.querySelector<HTMLInputElement>('#opacity')!;
   const opacityValue = document.querySelector<HTMLSpanElement>('#opacity-value')!;
   const savedOpacity = localStorage.getItem('clipbridge-opacity') || '92';

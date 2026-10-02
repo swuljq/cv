@@ -46,7 +46,19 @@ test('history opacity controls record text and card backgrounds', async () => {
 test('history items expose their full text on hover', async () => {
   const source = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8');
 
-  assert.match(source, /class="history-item"[^>]*title="\$\{escapeHtml\(item\)\}"/);
+  assert.match(source, /const title = item\.kind === 'text' \? escapeHtml\(item\.text \|\| ''\)/);
+  assert.match(source, /title="\$\{title\}"/);
+});
+
+test('image history uses lazy-loaded thumbnails and ID selection', async () => {
+  const source = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8');
+  const styles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+  assert.match(source, /invoke<HistoryItem\[]>\('get_clipboard_history'\)/);
+  assert.match(source, /invoke<string>\('get_history_thumbnail', \{ id \}\)/);
+  assert.match(source, /new IntersectionObserver/);
+  assert.match(source, /invoke\('select_clipboard_history', \{ id: button\.dataset\.id \}\)/);
+  assert.match(styles, /\.history-thumbnail\{/);
 });
 
 test('history list fills the window and scrolls independently', async () => {

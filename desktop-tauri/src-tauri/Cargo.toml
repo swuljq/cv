@@ -30,6 +30,11 @@ windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_Input_Ke
 enigo = "0.2"
 tauri-plugin-dialog = "2"
 uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
+clipboard-win = "5"
+image = { version = "0.25", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp"] }
+sha2 = "0.10"
+time = { version = "0.3", features = ["formatting"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
