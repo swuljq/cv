@@ -2,5 +2,8 @@
   "appId": "com.clipbridge.mobile",
   "appName": "ClipBridge",
   "webDir": "www",
-  "bundledWebRuntime": false
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "http"
+  }
 }
