@@ -3,7 +3,7 @@ use arboard::Clipboard;
 use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 use serde_json::json;
 use std::{sync::{atomic::{AtomicBool, AtomicIsize, Ordering}, Mutex, OnceLock}, thread, time::{Duration, Instant}};
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tungstenite::{connect, stream::MaybeTlsStream, Message};
 use windows::Win32::{Foundation::{POINT, HWND}, UI::WindowsAndMessaging::{GetCursorPos, GetForegroundWindow, SetForegroundWindow}};
 
@@ -51,7 +51,7 @@ fn select_clipboard_history(value: String) -> Result<(), String> {
 fn show_history_shortcut<R: tauri::Runtime>(app: &tauri::AppHandle<R>, _: &tauri_plugin_global_shortcut::Shortcut, event: tauri_plugin_global_shortcut::ShortcutEvent) {
     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
         unsafe { TARGET_WINDOW.store(GetForegroundWindow().0 as isize, Ordering::Release); }
-        if let Some(window) = app.get_webview_window("main") {
+        if let Some(window) = app.get_webview_window("history") {
             let mut point = POINT::default();
             unsafe { let _ = GetCursorPos(&mut point); }
             let _ = window.set_position(tauri::PhysicalPosition::new(point.x - 230, point.y - 180));
@@ -168,6 +168,12 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
+            WebviewWindowBuilder::new(app, "history", WebviewUrl::App("index.html?history".into()))
+                .title("ClipBridge 最近复制")
+                .inner_size(430.0, 360.0)
+                .resizable(false)
+                .visible(false)
+                .build()?;
             if let Err(error) = app.global_shortcut().on_shortcut("Super+V", show_history_shortcut) {
                 eprintln!("Win+V 注册失败，改用 Ctrl+Shift+V：{error}");
                 app.global_shortcut().on_shortcut("CommandOrControl+Shift+V", show_history_shortcut)?;
