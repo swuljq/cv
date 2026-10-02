@@ -41,6 +41,12 @@ fn get_clipboard_history() -> Vec<String> {
 }
 
 #[tauri::command]
+fn hide_history<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
+    let window = app.get_webview_window("history").ok_or_else(|| "history window not found".to_string())?;
+    window.hide().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn select_clipboard_history(value: String) -> Result<(), String> {
     let mut clipboard = Clipboard::new().map_err(|error| error.to_string())?;
     clipboard.set_text(value.clone()).map_err(|error| error.to_string())?;
@@ -224,7 +230,7 @@ pub fn run() {
             app.global_shortcut().on_shortcut(HISTORY_SHORTCUT, show_history_shortcut)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![start_sync, get_clipboard_history, select_clipboard_history])
+        .invoke_handler(tauri::generate_handler![start_sync, get_clipboard_history, hide_history, select_clipboard_history])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

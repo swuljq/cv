@@ -10,7 +10,7 @@ const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, character => ({ 
 
 if (isHistoryWindow) {
   document.body.classList.add('history-body');
-  app.innerHTML = `<section class="history-window"><div class="history-head"><button id="close-history" aria-label="关闭">×</button></div><div id="history-list"></div></section>`;
+  app.innerHTML = `<section class="history-window"><div class="history-head"><button id="close-history" type="button" aria-label="关闭">×</button></div><div id="history-list"></div></section>`;
   document.querySelector<HTMLElement>('.history-head')!.onpointerdown = event => {
     if ((event.target as HTMLElement).closest('button')) return;
     void currentWindow.startDragging();
@@ -40,7 +40,7 @@ if (isHistoryWindow) {
   };
   document.querySelector<HTMLButtonElement>('#close-history')!.onclick = async event => {
     event.stopPropagation();
-    await currentWindow.close();
+    await invoke('hide_history');
   };
   void listen('clipboard-history-open', renderHistory);
   void listen<number>('history-opacity-changed', event => {
