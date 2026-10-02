@@ -3,6 +3,8 @@ package com.clipbridge.mobile;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
+import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -12,6 +14,21 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 @CapacitorPlugin(name = "ClipboardBridge")
 public class ClipboardBridgePlugin extends Plugin {
+    @PluginMethod
+    public void startSync(PluginCall call) {
+        Intent intent = new Intent(getContext(), ClipboardSyncService.class)
+            .putExtra("url", call.getString("url", ""))
+            .putExtra("user", call.getString("user", ""))
+            .putExtra("password", call.getString("password", ""));
+        ContextCompat.startForegroundService(getContext(), intent);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void stopSync(PluginCall call) {
+        getContext().stopService(new Intent(getContext(), ClipboardSyncService.class));
+        call.resolve();
+    }
     @PluginMethod
     public void read(PluginCall call) {
         ClipboardManager manager = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
