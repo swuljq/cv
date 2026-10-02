@@ -1,5 +1,14 @@
 package com.clipbridge.mobile;
 
-import com.getcapacitor.BridgeActivity;
+import android.os.Bundle;
 
-public class MainActivity extends BridgeActivity {}
+import com.getcapacitor.BridgeActivity;
+import com.capacitorjs.plugins.clipboard.ClipboardPlugin;
+
+public class MainActivity extends BridgeActivity {
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(ClipboardPlugin.class);
+        super.onCreate(savedInstanceState);
+    }
+}
