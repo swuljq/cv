@@ -26,13 +26,16 @@ fn history_store() -> &'static Mutex<Vec<String>> {
     CLIPBOARD_HISTORY.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-fn remember_clipboard(value: &str) {
-    if value.is_empty() { return; }
+fn remember_clipboard(value: &str) -> bool {
+    if value.is_empty() { return false; }
     if let Ok(mut history) = history_store().lock() {
+        if history.first().map(String::as_str) == Some(value) { return false; }
         history.retain(|item| item != value);
         history.insert(0, value.to_string());
         history.truncate(10);
+        return true;
     }
+    false
 }
 
 #[tauri::command]
@@ -47,10 +50,10 @@ fn hide_history<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), Strin
 }
 
 #[tauri::command]
-fn select_clipboard_history(value: String) -> Result<(), String> {
+fn select_clipboard_history(app: tauri::AppHandle, value: String) -> Result<(), String> {
     let mut clipboard = Clipboard::new().map_err(|error| error.to_string())?;
     clipboard.set_text(value.clone()).map_err(|error| error.to_string())?;
-    remember_clipboard(&value);
+    if remember_clipboard(&value) { let _ = app.emit("clipboard-history-changed", ()); }
     let target = TARGET_WINDOW.load(Ordering::Acquire);
     if target != 0 {
         unsafe {
@@ -105,7 +108,7 @@ fn auth_message(username: &str, password: &str) -> Message {
 }
 
 #[tauri::command]
-fn start_sync(url: String, username: String, password: String) -> Result<(), String> {
+fn start_sync(app: tauri::AppHandle, url: String, username: String, password: String) -> Result<(), String> {
     if SYNC_RUNNING.swap(true, Ordering::AcqRel) {
         return Ok(());
     }
@@ -140,7 +143,7 @@ fn start_sync(url: String, username: String, password: String) -> Result<(), Str
                     if let Ok(text) = cb.get_text() {
                         if !text.is_empty() && text != last {
                             last = text.clone();
-                            remember_clipboard(&text);
+                            if remember_clipboard(&text) { let _ = app.emit("clipboard-history-changed", ()); }
                             let event_id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|v| v.as_millis()).unwrap_or_default();
                             if socket.send(Message::Text(json!({"type":"clipboard","eventId":format!("tauri-{event_id}"),"contentType":"text","data":text}).to_string())).is_err() {
                                 continue 'reconnect;
@@ -151,7 +154,7 @@ fn start_sync(url: String, username: String, password: String) -> Result<(), Str
                 match socket.read() {
                     Ok(Message::Text(raw)) => if let Ok(message) = serde_json::from_str::<serde_json::Value>(&raw) {
                         if message["type"] == "clipboard" && message["contentType"] == "text" {
-                                if let Some(value) = message["data"].as_str() { if let Some(cb) = clipboard.as_mut() { let _ = cb.set_text(value); last = value.to_string(); } remember_clipboard(value); }
+                                if let Some(value) = message["data"].as_str() { if let Some(cb) = clipboard.as_mut() { let _ = cb.set_text(value); last = value.to_string(); } if remember_clipboard(value) { let _ = app.emit("clipboard-history-changed", ()); } }
                         }
                     },
                     Err(tungstenite::Error::Io(ref e)) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {},
@@ -190,6 +193,8 @@ mod tests {
         assert_eq!(history.len(), 10);
         assert_eq!(history[0], "item-5");
         assert!(!history.contains(&"item-0".to_string()));
+        assert!(!remember_clipboard("item-5"));
+        assert!(remember_clipboard("new-item"));
     }
 
     #[test]

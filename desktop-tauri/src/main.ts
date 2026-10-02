@@ -68,6 +68,7 @@ if (isHistoryWindow) {
     if (!focused && shouldAutoHideHistory(windowPinned, windowDragging)) void invoke('hide_history');
   });
   void listen('clipboard-history-open', renderHistory);
+  void listen('clipboard-history-changed', renderHistory);
   void listen<number>('history-opacity-changed', event => {
     document.querySelector<HTMLElement>('.history-window')!.style.setProperty('--history-opacity', String(event.payload));
   });

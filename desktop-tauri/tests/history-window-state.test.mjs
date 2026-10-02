@@ -55,3 +55,9 @@ test('history list fills the window and scrolls independently', async () => {
   assert.match(styles, /\.history-window\{display:flex;flex-direction:column;/);
   assert.match(styles, /#history-list\{min-height:0;flex:1;overflow-y:auto;/);
 });
+
+test('visible history window refreshes when clipboard history changes', async () => {
+  const source = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /listen\('clipboard-history-changed', renderHistory\)/);
+});
