@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import './styles.css';
 
@@ -10,7 +10,7 @@ const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, character => ({ 
 
 if (isHistoryWindow) {
   document.body.classList.add('history-body');
-  app.innerHTML = `<section class="history-window"><div class="history-head"><strong>最近复制</strong><button id="close-history">关闭</button></div><div id="history-list"></div></section>`;
+  app.innerHTML = `<section class="history-window"><div class="history-head" data-tauri-drag-region><strong>最近复制</strong><button id="close-history" aria-label="关闭">×</button></div><div id="history-list"></div></section>`;
   const historyList = document.querySelector<HTMLElement>('#history-list')!;
   const renderHistory = async () => {
     const items = await invoke<string[]>('get_clipboard_history');
@@ -36,6 +36,9 @@ if (isHistoryWindow) {
   };
   document.querySelector<HTMLButtonElement>('#close-history')!.onclick = () => { void currentWindow.hide(); };
   void listen('clipboard-history-open', renderHistory);
+  void listen<number>('history-opacity-changed', event => {
+    document.querySelector<HTMLElement>('.history-window')!.style.setProperty('--history-opacity', String(event.payload));
+  });
 } else {
   app.innerHTML = `<main><h2>ClipBridge</h2><input id="server" value="ws://104.233.216.159:8787" placeholder="服务器地址"><input id="user" value="clipbridge" placeholder="账号"><input id="password" value="JocK36vOBqd4" type="password" placeholder="密码"><button id="connect">连接并开始同步</button><p id="status">未连接</p><label class="opacity-control">历史窗口透明度 <input id="opacity" type="range" min="5" max="100" value="92"><span id="opacity-value">92%</span></label><small>连接后可最小化到后台，按 Ctrl+Alt+Z 查看鼠标附近的历史窗口。</small></main>`;
   const $ = (id: string) => document.querySelector<HTMLInputElement | HTMLButtonElement | HTMLParagraphElement>(`#${id}`)!;
@@ -52,5 +55,6 @@ if (isHistoryWindow) {
   opacityInput.oninput = () => {
     opacityValue.textContent = `${opacityInput.value}%`;
     localStorage.setItem('clipbridge-opacity', opacityInput.value);
+    void emit('history-opacity-changed', Number(opacityInput.value) / 100);
   };
 }

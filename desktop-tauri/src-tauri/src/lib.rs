@@ -11,8 +11,8 @@ static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
 static TARGET_WINDOW: AtomicIsize = AtomicIsize::new(0);
 static CLIPBOARD_HISTORY: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
 const HISTORY_SHORTCUT: &str = "CommandOrControl+Alt+Z";
-const HISTORY_WINDOW_WIDTH: i32 = 430;
-const HISTORY_WINDOW_HEIGHT: i32 = 360;
+const HISTORY_WINDOW_WIDTH: i32 = 380;
+const HISTORY_WINDOW_HEIGHT: i32 = 320;
 
 fn bounded_history_position(cursor_x: i32, cursor_y: i32, area_x: i32, area_y: i32, area_width: u32, area_height: u32) -> (i32, i32) {
     let preferred_x = cursor_x - HISTORY_WINDOW_WIDTH / 2;
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn history_position_is_kept_inside_monitor_work_area() {
-        assert_eq!(super::bounded_history_position(1900, 1050, 0, 0, 1920, 1080), (1490, 720));
+        assert_eq!(super::bounded_history_position(1900, 1050, 0, 0, 1920, 1080), (1540, 760));
         assert_eq!(super::bounded_history_position(20, 20, 0, 0, 1920, 1080), (0, 0));
     }
 }
@@ -209,7 +209,9 @@ pub fn run() {
                 .title("ClipBridge 最近复制")
                 .inner_size(HISTORY_WINDOW_WIDTH as f64, HISTORY_WINDOW_HEIGHT as f64)
                 .resizable(false)
+                .decorations(false)
                 .transparent(true)
+                .always_on_top(true)
                 .visible(false)
                 .build()?;
             let history_window_handle = history_window.clone();
