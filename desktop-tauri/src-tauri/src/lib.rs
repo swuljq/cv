@@ -23,6 +23,8 @@ const HISTORY_FILE_NAME: &str = "clipsync-history.json";
 struct HistorySettings {
     history_limit: usize,
     history_directory: String,
+    #[serde(default)]
+    device_id: String,
 }
 
 struct HistoryState {
@@ -41,6 +43,12 @@ fn bounded_history_position(cursor_x: i32, cursor_y: i32, area_x: i32, area_y: i
 
 fn validate_history_limit(limit: usize) -> Result<(), String> {
     if (1..=MAX_HISTORY_LIMIT).contains(&limit) { Ok(()) } else { Err(format!("历史记录条数必须在 1 到 {MAX_HISTORY_LIMIT} 之间")) }
+}
+
+fn ensure_device_id(settings: &mut HistorySettings) -> bool {
+    if !settings.device_id.is_empty() { return false; }
+    settings.device_id = format!("desktop-{}", uuid::Uuid::new_v4());
+    true
 }
 
 fn normalize_history(entries: Vec<String>, limit: usize) -> Vec<String> {
@@ -121,14 +129,17 @@ fn initialize_history(settings_path: PathBuf, default_directory: PathBuf) -> Res
         let data = fs::read(&settings_path).map_err(|error| error.to_string())?;
         serde_json::from_slice::<HistorySettings>(&data).map_err(|error| format!("设置文件格式错误：{error}"))?
     } else {
-        HistorySettings { history_limit: DEFAULT_HISTORY_LIMIT, history_directory: default_directory.to_string_lossy().into_owned() }
+        HistorySettings { history_limit: DEFAULT_HISTORY_LIMIT, history_directory: default_directory.to_string_lossy().into_owned(), device_id: String::new() }
     };
+    let mut settings_changed = !settings_existed || ensure_device_id(&mut settings);
     validate_history_limit(settings.history_limit)?;
     let directory = PathBuf::from(&settings.history_directory);
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    settings.history_directory = directory.canonicalize().map_err(|error| error.to_string())?.to_string_lossy().into_owned();
+    let canonical_directory = directory.canonicalize().map_err(|error| error.to_string())?.to_string_lossy().into_owned();
+    if settings.history_directory != canonical_directory { settings_changed = true; }
+    settings.history_directory = canonical_directory;
     let entries = load_history(Path::new(&settings.history_directory), settings.history_limit)?;
-    if !settings_existed { write_json(&settings_path, &settings)?; }
+    if settings_changed { write_json(&settings_path, &settings)?; }
     HISTORY_STATE.set(Mutex::new(HistoryState { entries, settings, settings_path })).map_err(|_| "历史记录状态已经初始化".to_string())
 }
 
@@ -167,7 +178,7 @@ fn apply_history_settings(state: &mut HistoryState, history_limit: usize, histor
     let previous_directory = PathBuf::from(&state.settings.history_directory);
     let mut entries = state.entries.clone();
     entries.truncate(history_limit);
-    let settings = HistorySettings { history_limit, history_directory: directory.to_string_lossy().into_owned() };
+    let settings = HistorySettings { history_limit, history_directory: directory.to_string_lossy().into_owned(), device_id: state.settings.device_id.clone() };
     let destination_file = history_file(&directory);
     let destination_previous = match fs::read(&destination_file) {
         Ok(data) => Some(data),
@@ -259,18 +270,19 @@ fn show_history_shortcut<R: tauri::Runtime>(app: &tauri::AppHandle<R>, _: &tauri
     }
 }
 
-fn auth_message(username: &str, password: &str) -> Message {
+fn auth_message(username: &str, password: &str, device_id: &str) -> Message {
     Message::Text(json!({
         "type": "auth",
         "username": username,
         "password": password,
-        "deviceId": "windows-tauri",
-        "deviceName": "Windows desktop"
+        "deviceId": device_id,
+        "deviceName": "ClipSync desktop"
     }).to_string())
 }
 
 #[tauri::command]
 fn start_sync(app: tauri::AppHandle, url: String, username: String, password: String) -> Result<(), String> {
+    let device_id = history_state()?.lock().map_err(|_| "无法访问设备设置".to_string())?.settings.device_id.clone();
     if SYNC_RUNNING.swap(true, Ordering::AcqRel) {
         return Ok(());
     }
@@ -285,7 +297,7 @@ fn start_sync(app: tauri::AppHandle, url: String, username: String, password: St
                 continue;
             };
             retry_delay = Duration::from_secs(1);
-            let _ = socket.send(auth_message(&username, &password));
+            let _ = socket.send(auth_message(&username, &password, &device_id));
             match socket.get_mut() {
                 MaybeTlsStream::Plain(stream) => {
                     let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
@@ -343,7 +355,7 @@ fn start_sync(app: tauri::AppHandle, url: String, username: String, password: St
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_history_settings, auth_message, history_file, insert_history, load_history, sidecar_file, validate_history_limit, write_json, HistorySettings, HistoryState, HISTORY_SHORTCUT};
+    use super::{apply_history_settings, auth_message, ensure_device_id, history_file, insert_history, load_history, sidecar_file, validate_history_limit, write_json, HistorySettings, HistoryState, HISTORY_SHORTCUT};
     use std::{fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
     use tungstenite::Message;
 
@@ -355,15 +367,29 @@ mod tests {
     }
 
     #[test]
-    fn auth_message_includes_fixed_device_identity() {
-        let Message::Text(raw) = auth_message("user", "secret") else {
+    fn auth_message_includes_persisted_device_identity() {
+        let Message::Text(raw) = auth_message("user", "secret", "desktop-test") else {
             panic!("auth payload must be text");
         };
         let value: serde_json::Value = serde_json::from_str(&raw).expect("valid JSON");
         assert_eq!(value["type"], "auth");
         assert_eq!(value["username"], "user");
         assert_eq!(value["password"], "secret");
-        assert_eq!(value["deviceId"], "windows-tauri");
+        assert_eq!(value["deviceId"], "desktop-test");
+        assert_eq!(value["deviceName"], "ClipSync desktop");
+    }
+
+    #[test]
+    fn legacy_settings_receive_a_stable_unique_device_id() {
+        let mut first: HistorySettings = serde_json::from_str(r#"{"historyLimit":10,"historyDirectory":"history"}"#).expect("legacy settings");
+        let mut second = first.clone();
+        assert!(ensure_device_id(&mut first));
+        assert!(ensure_device_id(&mut second));
+        assert!(first.device_id.starts_with("desktop-"));
+        assert_ne!(first.device_id, second.device_id);
+        let device_id = first.device_id.clone();
+        assert!(!ensure_device_id(&mut first));
+        assert_eq!(first.device_id, device_id);
     }
 
     #[test]
@@ -406,12 +432,13 @@ mod tests {
         write_json(&history_file(&old_directory), &vec!["two".to_string(), "one".to_string()]).expect("write old history");
         let mut state = HistoryState {
             entries: vec!["two".to_string(), "one".to_string()],
-            settings: HistorySettings { history_limit: 10, history_directory: old_directory.to_string_lossy().into_owned() },
+            settings: HistorySettings { history_limit: 10, history_directory: old_directory.to_string_lossy().into_owned(), device_id: "desktop-test".to_string() },
             settings_path: root.join("settings.json"),
         };
         let (settings, changed) = apply_history_settings(&mut state, 1, new_directory.to_string_lossy().into_owned()).expect("migrate history");
         assert!(changed);
         assert_eq!(settings.history_limit, 1);
+        assert_eq!(settings.device_id, "desktop-test");
         assert_eq!(load_history(PathBuf::from(settings.history_directory).as_path(), 10).expect("load migrated history"), vec!["two"]);
         assert!(!history_file(&old_directory).exists());
         fs::remove_dir_all(root).expect("remove temp directory");
@@ -430,7 +457,7 @@ mod tests {
         fs::write(&blocked_parent, b"not a directory").expect("create blocking file");
         let mut state = HistoryState {
             entries: vec!["current".to_string()],
-            settings: HistorySettings { history_limit: 10, history_directory: old_directory.to_string_lossy().into_owned() },
+            settings: HistorySettings { history_limit: 10, history_directory: old_directory.to_string_lossy().into_owned(), device_id: "desktop-test".to_string() },
             settings_path: blocked_parent.join("settings.json"),
         };
         assert!(apply_history_settings(&mut state, 10, new_directory.to_string_lossy().into_owned()).is_err());

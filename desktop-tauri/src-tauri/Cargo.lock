@@ -834,6 +834,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tungstenite",
  "url",
+ "uuid",
  "windows 0.62.2",
 ]
 
