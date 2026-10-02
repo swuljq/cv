@@ -656,7 +656,6 @@ fn start_sync(app: tauri::AppHandle, url: String, username: String, password: St
     }
     thread::Builder::new().name("clipbridge-sync".into()).spawn(move || {
         let mut clipboard = Clipboard::new().ok();
-        let mut last_sequence = None;
         let mut last_fingerprint: Option<ClipboardFingerprint> = None;
         let mut retry_delay = Duration::from_secs(1);
         'reconnect: loop {
@@ -682,9 +681,7 @@ fn start_sync(app: tauri::AppHandle, url: String, username: String, password: St
                     }
                     last_ping = Instant::now();
                 }
-                let sequence = clipboard_win::raw::seq_num();
-                if (sequence.is_none() || sequence != last_sequence) && clipboard.is_some() {
-                    last_sequence = sequence;
+                if clipboard.is_some() {
                     let cb = clipboard.as_mut().expect("clipboard checked above");
                     match image_sync::read_clipboard_image(cb) {
                         Some(Ok(image)) => {
@@ -731,8 +728,7 @@ fn start_sync(app: tauri::AppHandle, url: String, username: String, password: St
                                         .and_then(|cb| cb.set_text(value).map_err(|error| error.to_string()));
                                     match clipboard_result {
                                         Ok(()) => {
-                                            last_sequence = clipboard_win::raw::seq_num();
-                                            match remember_text(value) {
+                                    match remember_text(value) {
                                                 Ok(true) => { let _ = app.emit("clipboard-history-changed", ()); }
                                                 Err(error) => eprintln!("failed to persist clipboard history: {error}"),
                                                 Ok(false) => {}
@@ -750,7 +746,6 @@ fn start_sync(app: tauri::AppHandle, url: String, username: String, password: St
                                                 .and_then(|cb| image_sync::clipboard_data(&image).and_then(|data| cb.set_image(data).map_err(|error| error.to_string())));
                                             match clipboard_result {
                                                 Ok(()) => {
-                                                    last_sequence = clipboard_win::raw::seq_num();
                                                     match remember_image(&image) {
                                                         Ok(true) => { let _ = app.emit("clipboard-history-changed", ()); }
                                                         Err(error) => eprintln!("failed to persist image history: {error}"),
