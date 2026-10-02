@@ -12,7 +12,7 @@ npm run server
 然后运行 `desktop/dist/win-unpacked/ClipBridge.exe`。打开两个客户端，使用默认账号登录：
 
 - 账号：`clipbridge`
-- 密码：`clipbridge-dev`
+- 密码：`JocK36vOBqd4`
 - 服务地址：`ws://127.0.0.1:8787`
 
 在任意客户端复制文本或图片，另一个客户端会收到并写入系统剪贴板。

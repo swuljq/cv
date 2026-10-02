@@ -19,3 +19,5 @@ desktop/dist/
 mobile/android/.gradle/
 mobile/android/**/build/
 mobile/android/local.properties
+
+desktop-tauri/src-tauri/target/
