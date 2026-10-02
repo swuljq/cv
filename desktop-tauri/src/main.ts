@@ -9,6 +9,7 @@ const isHistoryWindow = currentWindow.label === 'history';
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character] || character));
 
 if (isHistoryWindow) {
+  document.body.classList.add('history-body');
   app.innerHTML = `<section class="history-window"><div class="history-head"><strong>最近复制</strong><button id="close-history">关闭</button></div><div id="history-list"></div></section>`;
   const historyList = document.querySelector<HTMLElement>('#history-list')!;
   const renderHistory = async () => {

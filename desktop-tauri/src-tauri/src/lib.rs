@@ -11,6 +11,16 @@ static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
 static TARGET_WINDOW: AtomicIsize = AtomicIsize::new(0);
 static CLIPBOARD_HISTORY: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
 const HISTORY_SHORTCUT: &str = "CommandOrControl+Alt+Z";
+const HISTORY_WINDOW_WIDTH: i32 = 430;
+const HISTORY_WINDOW_HEIGHT: i32 = 360;
+
+fn bounded_history_position(cursor_x: i32, cursor_y: i32, area_x: i32, area_y: i32, area_width: u32, area_height: u32) -> (i32, i32) {
+    let preferred_x = cursor_x - HISTORY_WINDOW_WIDTH / 2;
+    let preferred_y = cursor_y - HISTORY_WINDOW_HEIGHT / 2;
+    let max_x = area_x + area_width as i32 - HISTORY_WINDOW_WIDTH;
+    let max_y = area_y + area_height as i32 - HISTORY_WINDOW_HEIGHT;
+    (preferred_x.clamp(area_x, max_x.max(area_x)), preferred_y.clamp(area_y, max_y.max(area_y)))
+}
 
 fn history_store() -> &'static Mutex<Vec<String>> {
     CLIPBOARD_HISTORY.get_or_init(|| Mutex::new(Vec::new()))
@@ -55,7 +65,22 @@ fn show_history_shortcut<R: tauri::Runtime>(app: &tauri::AppHandle<R>, _: &tauri
         if let Some(window) = app.get_webview_window("history") {
             let mut point = POINT::default();
             unsafe { let _ = GetCursorPos(&mut point); }
-            let _ = window.set_position(tauri::PhysicalPosition::new(point.x - 230, point.y - 180));
+            let position = window.monitor_from_point(point.x as f64, point.y as f64)
+                .ok()
+                .flatten()
+                .map(|monitor| {
+                    let work_area = monitor.work_area();
+                    bounded_history_position(
+                        point.x,
+                        point.y,
+                        work_area.position.x,
+                        work_area.position.y,
+                        work_area.size.width,
+                        work_area.size.height,
+                    )
+                })
+                .unwrap_or((point.x - HISTORY_WINDOW_WIDTH / 2, point.y - HISTORY_WINDOW_HEIGHT / 2));
+            let _ = window.set_position(tauri::PhysicalPosition::new(position.0, position.1));
             let _ = window.show();
             let _ = window.set_focus();
         }
@@ -165,6 +190,12 @@ mod tests {
     fn history_shortcut_uses_control_alt_z() {
         assert_eq!(HISTORY_SHORTCUT, "CommandOrControl+Alt+Z");
     }
+
+    #[test]
+    fn history_position_is_kept_inside_monitor_work_area() {
+        assert_eq!(super::bounded_history_position(1900, 1050, 0, 0, 1920, 1080), (1490, 720));
+        assert_eq!(super::bounded_history_position(20, 20, 0, 0, 1920, 1080), (0, 0));
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -176,8 +207,9 @@ pub fn run() {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             let history_window = WebviewWindowBuilder::new(app, "history", WebviewUrl::App("index.html?history".into()))
                 .title("ClipBridge 最近复制")
-                .inner_size(430.0, 360.0)
+                .inner_size(HISTORY_WINDOW_WIDTH as f64, HISTORY_WINDOW_HEIGHT as f64)
                 .resizable(false)
+                .transparent(true)
                 .visible(false)
                 .build()?;
             let history_window_handle = history_window.clone();
