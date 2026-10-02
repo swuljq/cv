@@ -32,6 +32,7 @@ test('history window has permission to start native dragging', async () => {
 
   assert.ok(capability.windows.includes('history'));
   assert.ok(capability.permissions.includes('core:window:allow-start-dragging'));
+  assert.ok(capability.permissions.includes('dialog:allow-open'));
 });
 
 test('history opacity controls record text and card backgrounds', async () => {
@@ -60,4 +61,20 @@ test('visible history window refreshes when clipboard history changes', async ()
   const source = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8');
 
   assert.match(source, /listen\('clipboard-history-changed', renderHistory\)/);
+});
+
+test('main window exposes ClipSync local history settings', async () => {
+  const source = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8');
+  const config = JSON.parse(await readFile(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+
+  assert.match(source, /<h2>ClipSync<\/h2>/);
+  assert.match(source, /id="history-limit" type="number" min="1" max="1000" value="10"/);
+  assert.match(source, /id="history-directory" readonly/);
+  assert.match(source, /open\(\{ directory: true, multiple: false/);
+  assert.match(source, /invoke<HistorySettings>\('save_history_settings'/);
+  assert.doesNotMatch(source, /连接后可最小化到后台/);
+  assert.equal(config.productName, 'ClipSync');
+  assert.equal(config.app.windows[0].title, 'ClipSync');
+  assert.match(html, /<title>ClipSync<\/title>/);
 });

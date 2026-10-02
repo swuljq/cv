@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "desktop-tauri",
+  "productName": "ClipSync",
   "version": "0.1.0",
   "identifier": "com.clipbridge.desktop",
   "build": {
@@ -13,9 +13,9 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "desktop-tauri",
+        "title": "ClipSync",
         "width": 460,
-        "height": 520
+        "height": 680
       }
     ],
     "security": {
