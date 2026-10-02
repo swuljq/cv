@@ -4,7 +4,6 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
-import android.provider.Settings;
 import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.JSObject;
@@ -28,12 +27,6 @@ public class ClipboardBridgePlugin extends Plugin {
     @PluginMethod
     public void stopSync(PluginCall call) {
         getContext().stopService(new Intent(getContext(), ClipboardSyncService.class));
-        call.resolve();
-    }
-
-    @PluginMethod
-    public void openAccessibilitySettings(PluginCall call) {
-        getContext().startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         call.resolve();
     }
     @PluginMethod
