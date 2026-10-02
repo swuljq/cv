@@ -33,3 +33,9 @@ test('history window has permission to start native dragging', async () => {
   assert.ok(capability.windows.includes('history'));
   assert.ok(capability.permissions.includes('core:window:allow-start-dragging'));
 });
+
+test('history opacity controls record text color', async () => {
+  const styles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+  assert.match(styles, /\.history-item\{[^}]*color:rgb\(23 32 51 \/ var\(--history-opacity,/);
+});
