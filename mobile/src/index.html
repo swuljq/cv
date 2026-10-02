@@ -11,16 +11,16 @@
 <div id="status">未连接</div>
 <pre id="log">等待操作…</pre>
 <script type="module">
+import { registerPlugin } from '@capacitor/core';
 const $ = id => document.getElementById(id);
 let socket; let last = '';
-let Clipboard;
+const Clipboard = registerPlugin('ClipboardBridge');
 const id = () => (globalThis.crypto?.randomUUID?.() || ("android-" + Date.now() + "-" + Math.random().toString(16).slice(2)));
 function log(v){ const line = `[${new Date().toLocaleTimeString()}] ${v}`; $('log').textContent = `${line}\n${$('log').textContent}`.slice(0, 5000); }
 function status(v){ $('status').textContent = v; log(v); }
-log('应用脚本已加载');
-import('@capacitor/clipboard').then(module => { Clipboard = module.Clipboard; log('剪贴板模块已加载'); }).catch(error => log(`剪贴板模块加载失败：${error?.message || error}`));
+log('应用脚本已加载，原生剪贴板桥接已注册');
 async function poll(){
-  if (!socket || socket.readyState !== WebSocket.OPEN || !Clipboard) return;
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
   try {
     const value = await Clipboard.read();
     if (value.type === 'text' && value.value && value.value !== last) { last = value.value; socket.send(JSON.stringify({type:'clipboard',eventId:id(),contentType:'text',data:value.value})); log('已发送文本剪贴板事件'); }
