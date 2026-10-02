@@ -42,7 +42,7 @@ if (isHistoryWindow) {
     const items = await invoke<string[]>('get_clipboard_history');
     const pinned = new Set(JSON.parse(localStorage.getItem('clipbridge-pinned') || '[]') as string[]);
     const ordered = [...items].sort((a, b) => Number(pinned.has(b)) - Number(pinned.has(a)));
-    historyList.innerHTML = ordered.length ? ordered.map((item, index) => `<div class="history-row"><button class="history-item" data-index="${index}">${escapeHtml(item)}</button><button class="pin-item" data-value="${encodeURIComponent(item)}" title="置顶">${pinned.has(item) ? '★' : '☆'}</button></div>`).join('') : '<p class="empty">还没有复制记录</p>';
+    historyList.innerHTML = ordered.length ? ordered.map((item, index) => `<div class="history-row"><button class="history-item" data-index="${index}" title="${escapeHtml(item)}">${escapeHtml(item)}</button><button class="pin-item" data-value="${encodeURIComponent(item)}" title="置顶">${pinned.has(item) ? '★' : '☆'}</button></div>`).join('') : '<p class="empty">还没有复制记录</p>';
     historyList.querySelectorAll<HTMLButtonElement>('.history-item').forEach(button => {
       button.onclick = async () => {
         await invoke('select_clipboard_history', { value: ordered[Number(button.dataset.index)] });

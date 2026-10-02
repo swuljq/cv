@@ -41,3 +41,9 @@ test('history opacity controls record text and card backgrounds', async () => {
   assert.match(styles, /\.history-item\{[^}]*background:rgb\(248 250 252 \/ var\(--history-opacity,/);
   assert.match(styles, /\.history-item:hover\{[^}]*background:rgb\(224 234 255 \/ var\(--history-opacity,/);
 });
+
+test('history items expose their full text on hover', async () => {
+  const source = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /class="history-item"[^>]*title="\$\{escapeHtml\(item\)\}"/);
+});
