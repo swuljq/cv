@@ -9,6 +9,7 @@ import {
 test('history window auto-hides only when it is not pinned', () => {
   assert.equal(shouldAutoHideHistory(false), true);
   assert.equal(shouldAutoHideHistory(true), false);
+  assert.equal(shouldAutoHideHistory(false, true), false);
 });
 
 test('only an explicit persisted true value restores the pinned state', () => {

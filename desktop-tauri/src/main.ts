@@ -12,9 +12,15 @@ const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, character => ({ 
 if (isHistoryWindow) {
   document.body.classList.add('history-body');
   app.innerHTML = `<section class="history-window"><div class="history-head"><button id="toggle-window-pin" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4v5l3 3v2h-4v6l-1 1-1-1v-6H7v-2l3-3V4z"/></svg></button><button id="close-history" type="button" aria-label="关闭">×</button></div><div id="history-list"></div></section>`;
-  document.querySelector<HTMLElement>('.history-head')!.onpointerdown = event => {
+  let windowDragging = false;
+  document.querySelector<HTMLElement>('.history-head')!.onpointerdown = async event => {
     if ((event.target as HTMLElement).closest('button')) return;
-    void currentWindow.startDragging();
+    windowDragging = true;
+    try {
+      await currentWindow.startDragging();
+    } finally {
+      windowDragging = false;
+    }
   };
   const windowPinButton = document.querySelector<HTMLButtonElement>('#toggle-window-pin')!;
   let windowPinned = readWindowPinned(localStorage.getItem(WINDOW_PINNED_STORAGE_KEY));
@@ -59,7 +65,7 @@ if (isHistoryWindow) {
     await invoke('hide_history');
   };
   void currentWindow.onFocusChanged(({ payload: focused }) => {
-    if (!focused && shouldAutoHideHistory(windowPinned)) void invoke('hide_history');
+    if (!focused && shouldAutoHideHistory(windowPinned, windowDragging)) void invoke('hide_history');
   });
   void listen('clipboard-history-open', renderHistory);
   void listen<number>('history-opacity-changed', event => {
