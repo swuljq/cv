@@ -24,3 +24,11 @@ test('all history window hide paths use the native command', async () => {
   assert.doesNotMatch(source, /currentWindow\.hide\(/);
   assert.equal(source.match(/invoke\('hide_history'\)/g)?.length, 3);
 });
+
+test('history window has permission to start native dragging', async () => {
+  const raw = await readFile(new URL('../src-tauri/capabilities/default.json', import.meta.url), 'utf8');
+  const capability = JSON.parse(raw);
+
+  assert.ok(capability.windows.includes('history'));
+  assert.ok(capability.permissions.includes('core:window:allow-start-dragging'));
+});
