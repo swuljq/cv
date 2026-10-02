@@ -6,10 +6,10 @@ use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 use image_sync::NormalizedImage;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{collections::HashSet, fs, path::{Path, PathBuf}, sync::{atomic::{AtomicBool, AtomicIsize, Ordering}, Mutex, OnceLock}, thread, time::{Duration, Instant}};
+use std::{collections::HashSet, fs, net::TcpStream, path::{Path, PathBuf}, sync::{atomic::{AtomicBool, AtomicIsize, Ordering}, Mutex, OnceLock}, thread, time::{Duration, Instant}};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
-use tungstenite::{connect, stream::MaybeTlsStream, Message};
+use tungstenite::{connect, stream::MaybeTlsStream, Message, WebSocket};
 use windows::Win32::{Foundation::{POINT, HWND}, UI::WindowsAndMessaging::{GetCursorPos, GetForegroundWindow, SetForegroundWindow}};
 
 static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
@@ -672,31 +672,69 @@ fn auth_message(username: &str, password: &str, device_id: &str) -> Message {
     }).to_string())
 }
 
+type SyncSocket = WebSocket<MaybeTlsStream<TcpStream>>;
+
+fn set_socket_read_timeout(socket: &mut SyncSocket, timeout: Duration) {
+    match socket.get_mut() {
+        MaybeTlsStream::Plain(stream) => { let _ = stream.set_read_timeout(Some(timeout)); }
+        MaybeTlsStream::NativeTls(stream) => { let _ = stream.get_ref().set_read_timeout(Some(timeout)); }
+        #[allow(unreachable_patterns)]
+        _ => {}
+    }
+}
+
+fn validate_auth_response(message: Message) -> Result<(), String> {
+    let Message::Text(raw) = message else { return Err("服务器未返回认证结果".to_string()); };
+    let value = serde_json::from_str::<serde_json::Value>(&raw).map_err(|_| "服务器认证响应无效".to_string())?;
+    match value["type"].as_str() {
+        Some("auth_ok") => Ok(()),
+        Some("error") => Err(match value["code"].as_str() {
+            Some("AUTH_FAILED") => "账号或密码错误".to_string(),
+            Some(code) => format!("服务器拒绝连接：{code}"),
+            None => "服务器拒绝连接".to_string(),
+        }),
+        _ => Err("服务器未确认认证成功".to_string()),
+    }
+}
+
+fn connect_authenticated(url: &str, username: &str, password: &str, device_id: &str) -> Result<SyncSocket, String> {
+    let (mut socket, _) = connect(url).map_err(|error| format!("无法连接服务器：{error}"))?;
+    set_socket_read_timeout(&mut socket, Duration::from_secs(5));
+    socket.send(auth_message(username, password, device_id)).map_err(|error| format!("发送认证信息失败：{error}"))?;
+    let response = socket.read().map_err(|error| format!("读取认证结果失败：{error}"))?;
+    validate_auth_response(response)?;
+    set_socket_read_timeout(&mut socket, Duration::from_millis(100));
+    Ok(socket)
+}
+
 #[tauri::command]
 fn start_sync(app: tauri::AppHandle, url: String, username: String, password: String) -> Result<(), String> {
     let device_id = history_state()?.lock().map_err(|_| "无法访问设备设置".to_string())?.settings.device_id.clone();
-    if SYNC_RUNNING.swap(true, Ordering::AcqRel) {
-        return Ok(());
-    }
-    thread::Builder::new().name("clipbridge-sync".into()).spawn(move || {
+    SYNC_RUNNING.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).map_err(|_| "同步已经在运行".to_string())?;
+    let initial_socket = match connect_authenticated(&url, &username, &password, &device_id) {
+        Ok(socket) => socket,
+        Err(error) => {
+            SYNC_RUNNING.store(false, Ordering::Release);
+            return Err(error);
+        }
+    };
+    let spawn_result = thread::Builder::new().name("clipbridge-sync".into()).spawn(move || {
         let mut clipboard = Clipboard::new().ok();
         let mut last_fingerprint: Option<ClipboardFingerprint> = None;
         let mut retry_delay = Duration::from_secs(1);
+        let mut initial_socket = Some(initial_socket);
         'reconnect: loop {
-            let Ok((mut socket, _)) = connect(&url) else {
-                thread::sleep(retry_delay);
-                retry_delay = (retry_delay * 2).min(Duration::from_secs(30));
-                continue;
+            let mut socket = if let Some(socket) = initial_socket.take() {
+                socket
+            } else {
+                let Ok(socket) = connect_authenticated(&url, &username, &password, &device_id) else {
+                    thread::sleep(retry_delay);
+                    retry_delay = (retry_delay * 2).min(Duration::from_secs(30));
+                    continue;
+                };
+                socket
             };
             retry_delay = Duration::from_secs(1);
-            let _ = socket.send(auth_message(&username, &password, &device_id));
-            match socket.get_mut() {
-                MaybeTlsStream::Plain(stream) => {
-                    let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
-                }
-                #[allow(unreachable_patterns)]
-                _ => {}
-            }
             let mut last_ping = Instant::now();
             loop {
                 if last_ping.elapsed() >= Duration::from_secs(20) {
@@ -807,13 +845,17 @@ fn start_sync(app: tauri::AppHandle, url: String, username: String, password: St
                 thread::sleep(Duration::from_millis(400));
             }
         }
-    }).map_err(|e| e.to_string())?;
+    });
+    if let Err(error) = spawn_result {
+        SYNC_RUNNING.store(false, Ordering::Release);
+        return Err(error.to_string());
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_history_settings, auth_message, cleanup_orphan_images, ensure_device_id, history_file, image_directory, image_entry, insert_entry, load_history, save_image_files, should_process_clipboard, sidecar_file, text_entry, thumbnail_directory, validate_history_limit, write_history, write_json, ClipboardFingerprint, HistoryDocument, HistoryEntry, HistoryKind, HistorySettings, HistoryState, HISTORY_SCHEMA_VERSION, HISTORY_SHORTCUT};
+    use super::{apply_history_settings, auth_message, cleanup_orphan_images, ensure_device_id, history_file, image_directory, image_entry, insert_entry, load_history, save_image_files, should_process_clipboard, sidecar_file, text_entry, thumbnail_directory, validate_auth_response, validate_history_limit, write_history, write_json, ClipboardFingerprint, HistoryDocument, HistoryEntry, HistoryKind, HistorySettings, HistoryState, HISTORY_SCHEMA_VERSION, HISTORY_SHORTCUT};
     use crate::image_sync;
     use std::{fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
     use tungstenite::Message;
@@ -844,6 +886,13 @@ mod tests {
         assert_eq!(value["password"], "secret");
         assert_eq!(value["deviceId"], "desktop-test");
         assert_eq!(value["deviceName"], "ClipSync desktop");
+    }
+
+    #[test]
+    fn authentication_requires_explicit_server_success() {
+        assert!(validate_auth_response(Message::Text(r#"{"type":"auth_ok"}"#.to_string())).is_ok());
+        assert_eq!(validate_auth_response(Message::Text(r#"{"type":"error","code":"AUTH_FAILED"}"#.to_string())).expect_err("auth must fail"), "账号或密码错误");
+        assert!(validate_auth_response(Message::Text(r#"{"type":"clipboard"}"#.to_string())).is_err());
     }
 
     #[test]
