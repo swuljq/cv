@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { readWindowPinned, shouldAutoHideHistory, WINDOW_PINNED_STORAGE_KEY } from './history-window-state';
 import './styles.css';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -10,11 +11,26 @@ const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, character => ({ 
 
 if (isHistoryWindow) {
   document.body.classList.add('history-body');
-  app.innerHTML = `<section class="history-window"><div class="history-head"><button id="close-history" type="button" aria-label="关闭">×</button></div><div id="history-list"></div></section>`;
+  app.innerHTML = `<section class="history-window"><div class="history-head"><button id="toggle-window-pin" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4v5l3 3v2h-4v6l-1 1-1-1v-6H7v-2l3-3V4z"/></svg></button><button id="close-history" type="button" aria-label="关闭">×</button></div><div id="history-list"></div></section>`;
   document.querySelector<HTMLElement>('.history-head')!.onpointerdown = event => {
     if ((event.target as HTMLElement).closest('button')) return;
     void currentWindow.startDragging();
   };
+  const windowPinButton = document.querySelector<HTMLButtonElement>('#toggle-window-pin')!;
+  let windowPinned = readWindowPinned(localStorage.getItem(WINDOW_PINNED_STORAGE_KEY));
+  const renderWindowPin = () => {
+    const label = windowPinned ? '取消固定窗口' : '固定窗口';
+    windowPinButton.classList.toggle('active', windowPinned);
+    windowPinButton.setAttribute('aria-label', label);
+    windowPinButton.setAttribute('aria-pressed', String(windowPinned));
+    windowPinButton.title = label;
+  };
+  windowPinButton.onclick = () => {
+    windowPinned = !windowPinned;
+    localStorage.setItem(WINDOW_PINNED_STORAGE_KEY, String(windowPinned));
+    renderWindowPin();
+  };
+  renderWindowPin();
   const historyList = document.querySelector<HTMLElement>('#history-list')!;
   const renderHistory = async () => {
     const items = await invoke<string[]>('get_clipboard_history');
@@ -24,7 +40,7 @@ if (isHistoryWindow) {
     historyList.querySelectorAll<HTMLButtonElement>('.history-item').forEach(button => {
       button.onclick = async () => {
         await invoke('select_clipboard_history', { value: ordered[Number(button.dataset.index)] });
-        await currentWindow.hide();
+        if (shouldAutoHideHistory(windowPinned)) await currentWindow.hide();
       };
     });
     historyList.querySelectorAll<HTMLButtonElement>('.pin-item').forEach(button => {
@@ -42,6 +58,9 @@ if (isHistoryWindow) {
     event.stopPropagation();
     await invoke('hide_history');
   };
+  void currentWindow.onFocusChanged(({ payload: focused }) => {
+    if (!focused && shouldAutoHideHistory(windowPinned)) void currentWindow.hide();
+  });
   void listen('clipboard-history-open', renderHistory);
   void listen<number>('history-opacity-changed', event => {
     document.querySelector<HTMLElement>('.history-window')!.style.setProperty('--history-opacity', String(event.payload));
