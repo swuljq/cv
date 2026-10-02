@@ -577,6 +577,7 @@ fn select_clipboard_history(app: tauri::AppHandle, id: String) -> Result<(), Str
             clipboard.set_image(image_sync::clipboard_data(&image)?).map_err(|error| error.to_string())?;
         }
     }
+    drop(clipboard);
     let changed = {
         let (mut entries, history_directory) = {
             let state = history_state()?.lock().map_err(|_| "无法访问历史记录".to_string())?;

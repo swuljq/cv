@@ -76,6 +76,7 @@ if (isHistoryWindow) {
           if (shouldAutoHideHistory(windowPinned)) await invoke('hide_history');
         } catch (error) {
           button.title = `无法使用此记录：${error}`;
+          void emit('clipboard-sync-warning', `选择历史图片失败：${error}`);
         }
       };
     });
