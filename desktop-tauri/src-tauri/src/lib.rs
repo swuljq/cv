@@ -567,6 +567,7 @@ fn select_clipboard_history(app: tauri::AppHandle, id: String) -> Result<(), Str
         let entry = state.entries.iter().find(|entry| entry.id == id).cloned().ok_or_else(|| "找不到历史记录".to_string())?;
         (entry, PathBuf::from(&state.settings.history_directory))
     };
+    let is_image = entry.kind == HistoryKind::Image;
     let mut clipboard = Clipboard::new().map_err(|error| error.to_string())?;
     match entry.kind {
         HistoryKind::Text => clipboard.set_text(entry.text.ok_or_else(|| "文字历史内容缺失".to_string())?).map_err(|error| error.to_string())?,
@@ -600,7 +601,7 @@ fn select_clipboard_history(app: tauri::AppHandle, id: String) -> Result<(), Str
         unsafe {
             let _ = SetForegroundWindow(HWND(target as *mut _));
         }
-        thread::sleep(Duration::from_millis(80));
+        thread::sleep(if is_image { Duration::from_millis(180) } else { Duration::from_millis(80) });
         let mut enigo = Enigo::new(&Settings::default()).map_err(|error| error.to_string())?;
         enigo.key(Key::Control, Direction::Press).map_err(|error| error.to_string())?;
         enigo.key(Key::V, Direction::Click).map_err(|error| error.to_string())?;

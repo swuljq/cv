@@ -27,7 +27,7 @@ const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, character => ({ 
 
 if (isHistoryWindow) {
   document.body.classList.add('history-body');
-  app.innerHTML = `<section class="history-window"><div class="history-head"><button id="toggle-window-pin" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4v5l3 3v2h-4v6l-1 1-1-1v-6H7v-2l3-3V4z"/></svg></button><button id="close-history" type="button" aria-label="关闭">×</button></div><div id="history-list"></div></section>`;
+  app.innerHTML = `<section class="history-window"><div class="history-head"><button id="toggle-window-pin" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4v5l3 3v2h-4v6l-1 1-1-1v-6H7v-2l3-3V4z"/></svg></button><button id="close-history" type="button" aria-label="关闭">×</button></div><p id="history-status" class="history-status" role="status"></p><div id="history-list"></div></section>`;
   let windowDragging = false;
   document.querySelector<HTMLElement>('.history-head')!.onpointerdown = async event => {
     if ((event.target as HTMLElement).closest('button')) return;
@@ -54,6 +54,7 @@ if (isHistoryWindow) {
   };
   renderWindowPin();
   const historyList = document.querySelector<HTMLElement>('#history-list')!;
+  const historyStatus = document.querySelector<HTMLElement>('#history-status')!;
   const renderHistory = async () => {
     const items = await invoke<HistoryItem[]>('get_clipboard_history');
     const pinned = new Set(JSON.parse(localStorage.getItem('clipbridge-pinned') || '[]') as string[]);
@@ -73,10 +74,12 @@ if (isHistoryWindow) {
       button.onclick = async () => {
         try {
           await invoke('select_clipboard_history', { id: button.dataset.id });
+          historyStatus.textContent = '';
           if (shouldAutoHideHistory(windowPinned)) await invoke('hide_history');
         } catch (error) {
-          button.title = `无法使用此记录：${error}`;
-          void emit('clipboard-sync-warning', `选择历史图片失败：${error}`);
+          const message = `无法使用此记录：${error}`;
+          button.title = message;
+          historyStatus.textContent = message;
         }
       };
     });
